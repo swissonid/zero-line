@@ -1,0 +1,17 @@
+{
+  "name": "@zl/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": {
+    "zl": "src/index.ts"
+  },
+  "dependencies": {
+    "@zl/core": "workspace:*"
+  },
+  "devDependencies": {
+    "effect": "^3.0.0",
+    "typescript": "^5.0.0",
+    "@types/bun": "latest"
+  }
+}

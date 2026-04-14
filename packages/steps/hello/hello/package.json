@@ -1,0 +1,15 @@
+{
+  "name": "@zl/step-hello",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@zl/core": "workspace:*"
+  },
+  "devDependencies": {
+    "effect": "^3.0.0",
+    "typescript": "^5.0.0",
+    "@types/bun": "latest"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "zero-line",
+  "private": true,
+  "workspaces": [
+    "packages/core",
+    "packages/cli",
+    "packages/steps/*/*"
+  ]
+}

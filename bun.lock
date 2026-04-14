@@ -5,6 +5,7 @@
     "": {
       "name": "zero-line",
       "devDependencies": {
+        "bun-types": "^1.3.12",
         "husky": "^9.1.7",
         "oxlint": "^1.60.0",
       },

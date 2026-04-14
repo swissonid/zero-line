@@ -5,5 +5,17 @@
     "packages/core",
     "packages/cli",
     "packages/steps/*/*"
-  ]
+  ],
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "oxlint": "^1.60.0"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "lint": "bunx oxlint packages/",
+    "lint:fix": "bunx oxlint --fix packages/",
+    "typecheck": "bunx tsc --noEmit -p packages/core/tsconfig.json && bunx tsc --noEmit -p packages/cli/tsconfig.json",
+    "test": "bun test --recursive packages/",
+    "test:coverage": "bun test --recursive --coverage packages/"
+  }
 }

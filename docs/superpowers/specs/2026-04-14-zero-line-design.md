@@ -66,27 +66,23 @@ zero-line/
 │   │
 │   └── steps/                   # Official steps (federated, grouped by feature)
 │       ├── build/
-│       │   ├── interface/       # @zl/step-build-interface (port definition)
+│       │   ├── build/           # @zl/step-build (contract: types, options, errors)
 │       │   ├── ios/             # @zl/step-build-ios (xcodebuild adapter)
-│       │   ├── android/         # @zl/step-build-android (gradle adapter)
-│       │   └── app/             # @zl/step-build (app-facing, resolves platform)
+│       │   └── android/         # @zl/step-build-android (gradle adapter)
 │       ├── sign/
-│       │   ├── interface/       # @zl/step-sign-interface
+│       │   ├── sign/            # @zl/step-sign (contract)
 │       │   ├── ios/             # @zl/step-sign-ios (certs, profiles)
-│       │   ├── android/         # @zl/step-sign-android (keystore)
-│       │   └── app/             # @zl/step-sign
+│       │   └── android/         # @zl/step-sign-android (keystore)
 │       ├── test/
-│       │   ├── interface/       # @zl/step-test-interface
+│       │   ├── test/            # @zl/step-test (contract)
 │       │   ├── ios/             # @zl/step-test-ios
-│       │   ├── android/         # @zl/step-test-android
-│       │   └── app/             # @zl/step-test
+│       │   └── android/         # @zl/step-test-android
 │       ├── deploy/
-│       │   ├── interface/       # @zl/step-deploy-interface
+│       │   ├── deploy/          # @zl/step-deploy (contract)
 │       │   ├── ios/             # @zl/step-deploy-ios (TestFlight, Firebase)
-│       │   ├── android/         # @zl/step-deploy-android (Play Store, Firebase)
-│       │   └── app/             # @zl/step-deploy
+│       │   └── android/         # @zl/step-deploy-android (Play Store, Firebase)
 │       └── version/
-│           └── app/             # @zl/step-version (no federation needed)
+│           └── version/         # @zl/step-version (no federation needed)
 │
 ├── docs/
 ├── bun.lockb
@@ -99,13 +95,14 @@ zero-line/
 
 Platform-specific steps follow a federated architecture:
 
-- **App-facing package** (`@zl/step-build`) — what users import in `zl.config.ts`. Resolves the correct platform implementation based on config.
-- **Interface package** (`@zl/step-build-interface`) — defines the port: types, options, artifacts, errors. Shared by all platform adapters.
-- **Platform packages** (`@zl/step-build-ios`, `@zl/step-build-android`) — concrete adapters per platform. Each has its own dependencies (no Xcode deps on Android-only machines).
+- **Contract package** (`@zl/step-build`) — what users import in `zl.config.ts`. Defines the port: types, options, artifacts, errors.
+- **Platform packages** (`@zl/step-build-ios`, `@zl/step-build-android`) — concrete adapters that implement the contract. Each has its own dependencies (no Xcode deps on Android-only machines).
 
-Platform-agnostic steps (e.g. `version`) don't need federation — just a single `app/` package.
+The core engine resolves the correct platform package automatically based on which platform block the step is configured in. No intermediary resolver package needed.
 
-Community members can add new platforms by implementing the interface (e.g. `@zl/step-build-flutter`) without modifying official packages.
+Platform-agnostic steps (e.g. `version`) don't need federation — just a single package.
+
+Community members can add new platforms by implementing the contract (e.g. `@zl/step-build-flutter`) without modifying official packages.
 
 All related packages for a step are grouped in a single folder (feature-sliced organization).
 

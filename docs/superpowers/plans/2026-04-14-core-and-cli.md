@@ -16,7 +16,10 @@
 zero-line/
 ├── package.json                              # Workspace root
 ├── tsconfig.base.json                        # Shared TS config
-├── bunfig.toml                               # Bun config
+├── bunfig.toml                               # Bun config + coverage threshold
+├── biome.json                                # Linter/formatter config
+├── .husky/
+│   └── pre-commit                            # Runs typecheck + lint + tests
 ├── packages/
 │   ├── core/
 │   │   ├── package.json                      # @zl/core
@@ -259,6 +262,114 @@ git commit -m "feat: scaffold monorepo with bun workspaces
 
 Sets up @zl/core, @zl/cli, and @zl/step-hello packages."
 ```
+
+---
+
+### Task 1b: Husky, Linting, and Code Coverage
+
+**Files:**
+- Create: `.husky/pre-commit`
+- Modify: `package.json` (add devDependencies + scripts)
+- Create: `biome.json` (linter/formatter config)
+- Modify: `bunfig.toml` (add coverage config)
+
+- [ ] **Step 1: Install Husky and initialize**
+
+Run:
+```bash
+bun add -d husky -W
+bunx husky init
+```
+Expected: Creates `.husky/` directory with a sample pre-commit hook.
+
+- [ ] **Step 2: Install Biome for linting and formatting**
+
+Run: `bun add -d @biomejs/biome -W`
+
+- [ ] **Step 3: Create biome.json**
+
+```json
+{
+  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+  "organizeImports": {
+    "enabled": true
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "files": {
+    "include": ["packages/**/*.ts"],
+    "ignore": ["**/dist/**", "**/node_modules/**"]
+  }
+}
+```
+
+- [ ] **Step 4: Add scripts to root package.json**
+
+Add to `package.json`:
+
+```json
+{
+  "scripts": {
+    "lint": "bunx biome check packages/",
+    "lint:fix": "bunx biome check --write packages/",
+    "typecheck": "bunx tsc --noEmit -p packages/core/tsconfig.json && bunx tsc --noEmit -p packages/cli/tsconfig.json",
+    "test": "bun test --recursive packages/",
+    "test:coverage": "bun test --recursive --coverage packages/"
+  }
+}
+```
+
+- [ ] **Step 5: Configure coverage threshold in bunfig.toml**
+
+Update `bunfig.toml`:
+
+```toml
+[install]
+peer = false
+
+[test]
+coverage = false
+coverageThreshold = { line = 80, function = 80, statement = 80 }
+```
+
+- [ ] **Step 6: Configure the pre-commit hook**
+
+Write `.husky/pre-commit`:
+
+```bash
+#!/usr/bin/env sh
+
+bun run typecheck
+bun run lint
+bun run test
+```
+
+- [ ] **Step 7: Verify the hook runs**
+
+Run: `git add -A && git commit --dry-run -m "test hook"`
+Expected: Runs typecheck, lint, and tests before allowing the commit. (Will fail since no source files exist yet — that's fine, just verify the hook triggers.)
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add package.json biome.json bunfig.toml .husky/ bun.lockb
+git commit -m "feat: add husky pre-commit hook with typecheck, lint, and tests
+
+Installs Husky + Biome. Pre-commit runs tsc, biome check, and bun test.
+Coverage threshold set to 80% for lines, functions, and statements." --no-verify
+```
+
+Note: `--no-verify` only for this bootstrap commit since there's no source code to check yet.
 
 ---
 

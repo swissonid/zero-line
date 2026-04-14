@@ -228,7 +228,7 @@ export default defineConfig({
 - **Shared steps** — platform-agnostic steps (versioning, changelog) at the top level.
 - **Workflows are named step sequences** — `zl beta` runs the `beta` workflow. Steps are referenced by name. The workflow array defines which steps to run; `dependsOnSteps` in step definitions adds additional ordering constraints (e.g. a step that must always run after another regardless of workflow order).
 - **Type-safe** — full TypeScript autocomplete and validation at config time.
-- **Secrets stay out** — sensitive values via env vars or `.env`, referenced as `process.env.TEAM_ID`.
+- **Secrets are AI-safe** — no `.env` files. Secrets resolve via: (1) environment variable, (2) OS keychain (macOS Keychain, Linux libsecret, Windows Credential Manager), (3) clear error prompting `zl secret set <key>`.
 - **Future: declarative config** — YAML/JSON support can be added later, compiling down to the same TypeScript representation.
 
 ---
@@ -275,6 +275,7 @@ zl run <workflow>          Explicit run           (same as above)
 zl init                    Scaffold zl.config.ts in current project
 zl doctor                  Check environment      (Xcode, Android SDK, certs)
 zl list                    List available workflows and steps
+zl secret <set|get|list|delete>  Manage secrets in OS keychain
 zl <step:command>          Step-registered commands (zl sign:init, zl deploy:status)
 ```
 
@@ -300,7 +301,7 @@ These are always available to steps via `ctx` (simple path) or Effect services (
 | Service | Purpose |
 |---|---|
 | `LoggerService` | Structured logging with levels |
-| `ConfigService` | Read `zl.config.ts`, env vars, secrets |
+| `ConfigService` | Read `zl.config.ts`, env vars, secrets (env → OS keychain → error) |
 | `PlatformService` | Detect OS, available toolchains (Xcode, Android SDK) |
 | `ArtifactService` | Typed artifact passing between steps |
 

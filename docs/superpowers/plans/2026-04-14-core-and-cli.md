@@ -17,7 +17,7 @@ zero-line/
 ├── package.json                              # Workspace root
 ├── tsconfig.base.json                        # Shared TS config
 ├── bunfig.toml                               # Bun config + coverage threshold
-├── biome.json                                # Linter/formatter config
+├── oxlintrc.json                             # OXC linter config
 ├── .husky/
 │   └── pre-commit                            # Runs typecheck + lint + tests
 ├── packages/
@@ -270,7 +270,7 @@ Sets up @zl/core, @zl/cli, and @zl/step-hello packages."
 **Files:**
 - Create: `.husky/pre-commit`
 - Modify: `package.json` (add devDependencies + scripts)
-- Create: `biome.json` (linter/formatter config)
+- Create: `oxlintrc.json` (linter config)
 - Modify: `bunfig.toml` (add coverage config)
 
 - [ ] **Step 1: Install Husky and initialize**
@@ -282,34 +282,20 @@ bunx husky init
 ```
 Expected: Creates `.husky/` directory with a sample pre-commit hook.
 
-- [ ] **Step 2: Install Biome for linting and formatting**
+- [ ] **Step 2: Install OXC (oxlint + oxc-formatter)**
 
-Run: `bun add -d @biomejs/biome -W`
+Run: `bun add -d oxlint -W`
 
-- [ ] **Step 3: Create biome.json**
+- [ ] **Step 3: Create oxlintrc.json**
 
 ```json
 {
-  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
-  "organizeImports": {
-    "enabled": true
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-console": "off",
+    "eqeqeq": "error"
   },
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "recommended": true
-    }
-  },
-  "formatter": {
-    "enabled": true,
-    "indentStyle": "space",
-    "indentWidth": 2,
-    "lineWidth": 100
-  },
-  "files": {
-    "include": ["packages/**/*.ts"],
-    "ignore": ["**/dist/**", "**/node_modules/**"]
-  }
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**"]
 }
 ```
 
@@ -320,8 +306,9 @@ Add to `package.json`:
 ```json
 {
   "scripts": {
-    "lint": "bunx biome check packages/",
-    "lint:fix": "bunx biome check --write packages/",
+    "lint": "bunx oxlint packages/",
+    "lint:fix": "bunx oxlint --fix packages/",
+    "format": "bunx oxc-format packages/",
     "typecheck": "bunx tsc --noEmit -p packages/core/tsconfig.json && bunx tsc --noEmit -p packages/cli/tsconfig.json",
     "test": "bun test --recursive packages/",
     "test:coverage": "bun test --recursive --coverage packages/"
@@ -351,6 +338,7 @@ Write `.husky/pre-commit`:
 
 bun run typecheck
 bun run lint
+bun run format
 bun run test
 ```
 
@@ -362,10 +350,10 @@ Expected: Runs typecheck, lint, and tests before allowing the commit. (Will fail
 - [ ] **Step 8: Commit**
 
 ```bash
-git add package.json biome.json bunfig.toml .husky/ bun.lockb
+git add package.json oxlintrc.json bunfig.toml .husky/ bun.lockb
 git commit -m "feat: add husky pre-commit hook with typecheck, lint, and tests
 
-Installs Husky + Biome. Pre-commit runs tsc, biome check, and bun test.
+Installs Husky + OXC (oxlint + formatter). Pre-commit runs tsc, oxlint, oxc-format, and bun test.
 Coverage threshold set to 80% for lines, functions, and statements." --no-verify
 ```
 

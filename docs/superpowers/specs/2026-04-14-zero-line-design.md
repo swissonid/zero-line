@@ -64,12 +64,29 @@ zero-line/
 │   │   ├── src/
 │   │   └── package.json         # "@zl/cli" → installs as `zl`
 │   │
-│   └── steps/                   # Official steps (each its own package)
-│       ├── step-build/          # @zl/step-build (xcodebuild, gradle)
-│       ├── step-sign/           # @zl/step-sign (certs, profiles, keystore)
-│       ├── step-test/           # @zl/step-test (unit, integration)
-│       ├── step-deploy/         # @zl/step-deploy (TestFlight, Firebase, Play Store)
-│       └── step-version/        # @zl/step-version (bumping, changelog)
+│   └── steps/                   # Official steps (federated, grouped by feature)
+│       ├── build/
+│       │   ├── interface/       # @zl/step-build-interface (port definition)
+│       │   ├── ios/             # @zl/step-build-ios (xcodebuild adapter)
+│       │   ├── android/         # @zl/step-build-android (gradle adapter)
+│       │   └── app/             # @zl/step-build (app-facing, resolves platform)
+│       ├── sign/
+│       │   ├── interface/       # @zl/step-sign-interface
+│       │   ├── ios/             # @zl/step-sign-ios (certs, profiles)
+│       │   ├── android/         # @zl/step-sign-android (keystore)
+│       │   └── app/             # @zl/step-sign
+│       ├── test/
+│       │   ├── interface/       # @zl/step-test-interface
+│       │   ├── ios/             # @zl/step-test-ios
+│       │   ├── android/         # @zl/step-test-android
+│       │   └── app/             # @zl/step-test
+│       ├── deploy/
+│       │   ├── interface/       # @zl/step-deploy-interface
+│       │   ├── ios/             # @zl/step-deploy-ios (TestFlight, Firebase)
+│       │   ├── android/         # @zl/step-deploy-android (Play Store, Firebase)
+│       │   └── app/             # @zl/step-deploy
+│       └── version/
+│           └── app/             # @zl/step-version (no federation needed)
 │
 ├── docs/
 ├── bun.lockb
@@ -78,11 +95,26 @@ zero-line/
 └── tsconfig.json
 ```
 
+### Federated Step Model (inspired by Flutter)
+
+Platform-specific steps follow a federated architecture:
+
+- **App-facing package** (`@zl/step-build`) — what users import in `zl.config.ts`. Resolves the correct platform implementation based on config.
+- **Interface package** (`@zl/step-build-interface`) — defines the port: types, options, artifacts, errors. Shared by all platform adapters.
+- **Platform packages** (`@zl/step-build-ios`, `@zl/step-build-android`) — concrete adapters per platform. Each has its own dependencies (no Xcode deps on Android-only machines).
+
+Platform-agnostic steps (e.g. `version`) don't need federation — just a single `app/` package.
+
+Community members can add new platforms by implementing the interface (e.g. `@zl/step-build-flutter`) without modifying official packages.
+
+All related packages for a step are grouped in a single folder (feature-sliced organization).
+
 Key decisions:
 - **Bun workspaces** for monorepo management
 - **CLI is a separate package** — independently versioned, depends on core
 - **Each official step is its own npm package** under `@zl/` scope
 - **Core has no platform-specific code**
+- **Federated steps** — platform implementations are separate packages, grouped by feature
 
 ---
 

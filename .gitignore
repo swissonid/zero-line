@@ -3,4 +3,5 @@ dist
 *.tsbuildinfo
 bun.lockb
 fastlane
+packages/cli/zl
 .DS_Store

@@ -1,3 +1,4 @@
+import { Effect } from "effect"
 import { buildExecutionOrder } from "./DependencyGraph"
 import type { ResolvedStep, StepContext } from "../step-loader/StepContract"
 
@@ -46,23 +47,22 @@ export class Pipeline {
   private readonly workflow: ReadonlyArray<string>
   private readonly context: StepContext
 
+  private readonly stepMap: Map<string, ResolvedStep>
+
   constructor(config: PipelineConfig) {
     this.steps = config.steps
     this.workflow = config.workflow
     this.context = makeDefaultContext(config.context)
+    this.stepMap = new Map(this.steps.map((s) => [s.name, s]))
   }
 
   async execute(): Promise<ReadonlyArray<StepResult>> {
     const executionOrder = buildExecutionOrder(this.steps, this.workflow)
-    const stepMap = new Map<string, ResolvedStep>()
-    for (const step of this.steps) {
-      stepMap.set(step.name, step)
-    }
 
     const results: StepResult[] = []
 
     for (const name of executionOrder) {
-      const step = stepMap.get(name)!
+      const step = this.stepMap.get(name)!
       const start = performance.now()
 
       try {
@@ -70,7 +70,6 @@ export class Pipeline {
         if (step._tag === "simple") {
           output = await step.execute({}, this.context)
         } else {
-          const { Effect } = await import("effect")
           output = await Effect.runPromise(step.run({}))
         }
 
@@ -91,7 +90,6 @@ export class Pipeline {
       }
     }
 
-    // Mark remaining unexecuted steps as skipped
     const executed = new Set(results.map((r) => r.name))
     for (const name of executionOrder) {
       if (!executed.has(name)) {

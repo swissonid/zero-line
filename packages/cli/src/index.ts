@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { loadConfig } from "@zl/core"
+import { loadConfig, type Platform } from "@zl/core"
 import { runWorkflow } from "./commands/run"
 
 const args = process.argv.slice(2)
@@ -24,9 +24,16 @@ Options:
   process.exit(0)
 }
 
+const VALID_PLATFORMS: ReadonlyArray<Platform> = ["ios", "android"]
+
 const projectDir = process.cwd()
 const platformFlag = args.indexOf("--platform")
-const platform = platformFlag !== -1 ? (args[platformFlag + 1] as "ios" | "android") : undefined
+const rawPlatform = platformFlag !== -1 ? args[platformFlag + 1] : undefined
+if (rawPlatform && !VALID_PLATFORMS.includes(rawPlatform as Platform)) {
+  console.error(`Invalid platform '${rawPlatform}'. Must be one of: ${VALID_PLATFORMS.join(", ")}`)
+  process.exit(1)
+}
+const platform = rawPlatform as Platform | undefined
 const verbose = args.includes("--verbose")
 
 async function main() {
@@ -38,18 +45,15 @@ async function main() {
       process.exit(1)
     }
 
+    const config = await loadConfig(projectDir)
+
     if (command === "list") {
-      const config = await loadConfig(projectDir)
       console.log("\nWorkflows:")
       for (const [name, steps] of Object.entries(config.workflows)) {
         console.log(`  ${name}: ${(steps as string[]).join(" → ")}`)
       }
       process.exit(0)
     }
-
-    // For now, steps are loaded at runtime from config imports
-    // This will be enhanced when we have real step packages
-    const config = await loadConfig(projectDir)
 
     const allStepInstances = [
       ...(config.steps ?? []),
@@ -60,8 +64,7 @@ async function main() {
 
     const success = await runWorkflow({
       workflowName,
-      projectDir,
-      platform,
+      config,
       verbose,
       steps: allStepInstances as any,
     })

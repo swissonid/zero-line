@@ -8,10 +8,8 @@ function detectToolchains(): Toolchain[] {
     const result = Bun.spawnSync(["xcodebuild", "-version"])
     if (result.exitCode === 0) toolchains.push("xcode")
   } catch {}
-  try {
-    const home = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT
-    if (home) toolchains.push("android-sdk")
-  } catch {}
+  const home = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT
+  if (home) toolchains.push("android-sdk")
   try {
     const result = Bun.spawnSync(["gradle", "--version"])
     if (result.exitCode === 0) toolchains.push("gradle")

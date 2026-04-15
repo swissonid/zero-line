@@ -4,9 +4,8 @@ import { writeFileSync, mkdirSync, rmSync } from "fs"
 import { join } from "path"
 
 describe("loadConfig", () => {
-  const tmpDir = join(import.meta.dir, "__test_tmp_config__")
-
   test("loads and validates a zl.config.ts file", async () => {
+    const tmpDir = join(import.meta.dir, "__test_tmp_valid__")
     mkdirSync(tmpDir, { recursive: true })
     writeFileSync(
       join(tmpDir, "zl.config.ts"),
@@ -32,6 +31,7 @@ describe("loadConfig", () => {
   })
 
   test("throws on invalid config (missing app)", async () => {
+    const tmpDir = join(import.meta.dir, "__test_tmp_invalid__")
     mkdirSync(tmpDir, { recursive: true })
     writeFileSync(
       join(tmpDir, "zl.config.ts"),

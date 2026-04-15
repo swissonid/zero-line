@@ -12,10 +12,15 @@ export function renderStepResult(result: StepResult): string {
 }
 
 export function renderResults(results: ReadonlyArray<StepResult>): string {
-  const lines = results.map(renderStepResult)
-  const passed = results.filter((r) => r.status === "pass").length
-  const failed = results.filter((r) => r.status === "fail").length
-  const skipped = results.filter((r) => r.status === "skipped").length
+  const lines: string[] = []
+  let passed = 0, failed = 0, skipped = 0
+
+  for (const result of results) {
+    lines.push(renderStepResult(result))
+    if (result.status === "pass") passed++
+    else if (result.status === "fail") failed++
+    else skipped++
+  }
 
   lines.push("")
   lines.push(`  ${passed} passed, ${failed} failed, ${skipped} skipped`)

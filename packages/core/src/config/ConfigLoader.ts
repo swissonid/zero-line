@@ -1,5 +1,4 @@
 import { join } from "path"
-import { existsSync } from "fs"
 import type { ZlConfig } from "./ConfigTypes"
 
 export class ConfigFileNotFoundError extends Error {
@@ -47,12 +46,13 @@ function validateConfig(raw: unknown): ZlConfig {
 export async function loadConfig(projectDir: string): Promise<ZlConfig> {
   const configPath = join(projectDir, "zl.config.ts")
 
-  if (!existsSync(configPath)) {
+  let mod: Record<string, unknown>
+  try {
+    mod = await import(configPath)
+  } catch {
     throw new ConfigFileNotFoundError(projectDir)
   }
 
-  const mod = await import(`${configPath}?t=${Date.now()}`)
   const raw = mod.default ?? mod
-
   return validateConfig(raw)
 }

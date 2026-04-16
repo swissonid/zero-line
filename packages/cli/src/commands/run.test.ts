@@ -1,28 +1,97 @@
 import { describe, test, expect } from "bun:test"
-import { renderResults } from "../output/Renderer"
-import type { StepResult } from "@zl/core"
+import { defineStep, type ZlConfig } from "@zl/core"
+import { runWorkflow } from "./run"
+import type { CliIO } from "../cli"
 
-describe("Renderer", () => {
-  test("renders passing results", () => {
-    const results: StepResult[] = [
-      { name: "test", status: "pass", durationMs: 120 },
-      { name: "build", status: "pass", durationMs: 3400 },
-    ]
+function makeIO(): { io: CliIO; out: string[]; err: string[] } {
+  const out: string[] = []
+  const err: string[] = []
+  return {
+    io: {
+      stdout: (m) => out.push(m),
+      stderr: (m) => err.push(m),
+    },
+    out,
+    err,
+  }
+}
 
-    const output = renderResults(results)
-    expect(output).toContain("test")
-    expect(output).toContain("build")
-    expect(output).toContain("2 passed, 0 failed, 0 skipped")
+const mkConfig = (workflows: Record<string, string[]>): ZlConfig => ({
+  app: { name: "T", bundleId: "c.t" },
+  platforms: {},
+  workflows,
+})
+
+describe("runWorkflow", () => {
+  test("returns false and reports when the workflow is not found", async () => {
+    const { io, err } = makeIO()
+    const result = await runWorkflow({
+      workflowName: "missing",
+      config: mkConfig({ ci: ["hello"] }),
+      steps: [],
+      io,
+    })
+    expect(result).toBe(false)
+    expect(err.join("\n")).toContain("missing")
+    expect(err.join("\n")).toContain("Available workflows")
   })
 
-  test("renders failures with error message", () => {
-    const results: StepResult[] = [
-      { name: "test", status: "fail", durationMs: 50, error: "Tests failed" },
-      { name: "build", status: "skipped", durationMs: 0 },
-    ]
+  test("returns true when all steps pass", async () => {
+    const { io } = makeIO()
+    const step = defineStep({ name: "ok", run: async () => ({}) })
+    const result = await runWorkflow({
+      workflowName: "ci",
+      config: mkConfig({ ci: ["ok"] }),
+      steps: [step],
+      io,
+    })
+    expect(result).toBe(true)
+  })
 
-    const output = renderResults(results)
-    expect(output).toContain("Tests failed")
-    expect(output).toContain("0 passed, 1 failed, 1 skipped")
+  test("returns false when a step fails", async () => {
+    const { io } = makeIO()
+    const step = defineStep({
+      name: "boom",
+      run: async () => {
+        throw new Error("nope")
+      },
+    })
+    const result = await runWorkflow({
+      workflowName: "ci",
+      config: mkConfig({ ci: ["boom"] }),
+      steps: [step],
+      io,
+    })
+    expect(result).toBe(false)
+  })
+
+  test("falls back to console IO when none provided", async () => {
+    const origLog = console.log
+    const origErr = console.error
+    const logged: string[] = []
+    const errored: string[] = []
+    console.log = (m: string) => logged.push(String(m))
+    console.error = (m: string) => errored.push(String(m))
+    try {
+      const notFound = await runWorkflow({
+        workflowName: "absent",
+        config: mkConfig({ ci: ["hello"] }),
+        steps: [],
+      })
+      expect(notFound).toBe(false)
+      expect(errored.some((m) => m.includes("absent"))).toBe(true)
+
+      const step = defineStep({ name: "ok", run: async () => ({}) })
+      const passed = await runWorkflow({
+        workflowName: "ci",
+        config: mkConfig({ ci: ["ok"] }),
+        steps: [step],
+      })
+      expect(passed).toBe(true)
+      expect(logged.some((m) => m.includes("Running workflow"))).toBe(true)
+    } finally {
+      console.log = origLog
+      console.error = origErr
+    }
   })
 })

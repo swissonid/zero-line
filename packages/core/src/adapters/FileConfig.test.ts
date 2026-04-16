@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test"
-import { Effect } from "effect"
-import { ConfigService, ConfigLoadError } from "../ports/ConfigService"
+import { Cause, Effect, Exit, Option } from "effect"
+import { ConfigService, ConfigLoadError, SecretNotFoundError } from "../ports/ConfigService"
 import { makeFileConfigLayer } from "./FileConfig"
 import { writeFileSync, mkdirSync, rmSync } from "fs"
 import { join } from "path"
@@ -70,7 +70,7 @@ describe("FileConfig", () => {
         const cause = exit.cause
         const failures = Array.from(Cause.failures(cause))
         expect(failures.some(f => (f as { _tag?: string })._tag === "ConfigLoadError")).toBe(true)
-        expect(failures.some(f => f instanceof Error && f.message.includes("app"))).toBe(true)
+        expect(failures.some(f => (f as { message?: string }).message?.includes("app"))).toBe(true)
       }
     } finally {
       rmSync(malformedDir, { recursive: true, force: true })
@@ -114,7 +114,7 @@ describe("FileConfig", () => {
 
     const exit = await Effect.runPromise(Effect.exit(Effect.provide(program, layer)))
     expect(exit._tag).toBe("Failure")
-    const failure = Cause.failureOption((exit as Exit.Failure<SecretNotFoundError, never>).cause)
+    const failure = Cause.failureOption((exit as Exit.Failure<string, SecretNotFoundError>).cause)
     expect(Option.isSome(failure)).toBe(true)
     expect(Option.getOrThrow(failure)._tag).toBe("SecretNotFoundError")
     expect(Option.getOrThrow(failure).key).toBe("__ZL_SECRET_ABSENT__")

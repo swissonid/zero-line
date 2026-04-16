@@ -65,6 +65,18 @@ describe("buildExecutionOrder", () => {
     expect(warnings[0]).toContain("not in the current workflow")
   })
 
+  test("warns distinctly when dependsOnSteps names a step that was never defined", () => {
+    const steps = [{ name: "upload", dependsOnSteps: ["typo"] }]
+    const warnings: string[] = []
+
+    const order = buildExecutionOrder(steps, ["upload"], (m) => warnings.push(m))
+
+    expect(order).toEqual(["upload"])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain("typo")
+    expect(warnings[0]).toContain("not defined in any loaded step")
+  })
+
   test("default onWarn routes to console.warn", () => {
     const steps = [
       { name: "upload", dependsOnSteps: ["sign"] },

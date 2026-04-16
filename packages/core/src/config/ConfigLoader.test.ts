@@ -3,12 +3,17 @@ import { loadConfig, ConfigFileNotFoundError } from "./ConfigLoader"
 import { writeFileSync, mkdirSync, rmSync } from "fs"
 import { join } from "path"
 
+function withTmpProject(name: string, configSource: string): string {
+  const dir = join(import.meta.dir, `__test_tmp_${name}__`)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, "zl.config.ts"), configSource)
+  return dir
+}
+
 describe("loadConfig", () => {
   test("loads and validates a zl.config.ts file", async () => {
-    const tmpDir = join(import.meta.dir, "__test_tmp_valid__")
-    mkdirSync(tmpDir, { recursive: true })
-    writeFileSync(
-      join(tmpDir, "zl.config.ts"),
+    const dir = withTmpProject(
+      "valid",
       `export default {
         app: { name: "TestApp", bundleId: "com.test.app" },
         platforms: {
@@ -17,13 +22,13 @@ describe("loadConfig", () => {
         workflows: { ci: ["test"] },
       }`
     )
-
-    const config = await loadConfig(tmpDir)
-
-    expect(config.app.name).toBe("TestApp")
-    expect(config.workflows.ci).toEqual(["test"])
-
-    rmSync(tmpDir, { recursive: true, force: true })
+    try {
+      const config = await loadConfig(dir)
+      expect(config.app.name).toBe("TestApp")
+      expect(config.workflows.ci).toEqual(["test"])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   test("throws ConfigFileNotFoundError for missing config", async () => {
@@ -31,28 +36,23 @@ describe("loadConfig", () => {
   })
 
   test("throws on invalid config (missing app)", async () => {
-    const tmpDir = join(import.meta.dir, "__test_tmp_invalid__")
-    mkdirSync(tmpDir, { recursive: true })
-    writeFileSync(
-      join(tmpDir, "zl.config.ts"),
-      `export default { workflows: {} }`
-    )
-
-    expect(loadConfig(tmpDir)).rejects.toThrow(/app/)
-
-    rmSync(tmpDir, { recursive: true, force: true })
+    const dir = withTmpProject("invalid", `export default { workflows: {} }`)
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(/app/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   test("surfaces import errors instead of masking them as not-found", async () => {
-    const tmpDir = join(import.meta.dir, "__test_tmp_syntax__")
-    mkdirSync(tmpDir, { recursive: true })
-    writeFileSync(
-      join(tmpDir, "zl.config.ts"),
+    const dir = withTmpProject(
+      "syntax",
       `export default { app: { name: "X", bundleId: "x" }, workflows: {} `
     )
-
-    expect(loadConfig(tmpDir)).rejects.not.toThrow(ConfigFileNotFoundError)
-
-    rmSync(tmpDir, { recursive: true, force: true })
+    try {
+      await expect(loadConfig(dir)).rejects.not.toThrow(ConfigFileNotFoundError)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

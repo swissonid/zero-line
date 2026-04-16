@@ -2,7 +2,10 @@ import { Effect, Layer } from "effect"
 import { PlatformService, type OS, type Toolchain } from "../ports/PlatformService"
 import type { Platform } from "../config/ConfigTypes"
 
-export function detectToolchains(): Toolchain[] {
+let cachedToolchains: ReadonlyArray<Toolchain> | null = null
+
+export function detectToolchains(): ReadonlyArray<Toolchain> {
+  if (cachedToolchains !== null) return cachedToolchains
   const toolchains: Toolchain[] = []
   try {
     const result = Bun.spawnSync(["xcodebuild", "-version"])
@@ -14,7 +17,8 @@ export function detectToolchains(): Toolchain[] {
     const result = Bun.spawnSync(["gradle", "--version"])
     if (result.exitCode === 0) toolchains.push("gradle")
   } catch {}
-  return toolchains
+  cachedToolchains = Object.freeze(toolchains)
+  return cachedToolchains
 }
 
 export function platformSupports(platform: string): boolean {

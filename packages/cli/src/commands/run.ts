@@ -1,21 +1,17 @@
 import { Pipeline } from "@zl/core"
 import type { ResolvedStep, ZlConfig } from "@zl/core"
 import { renderResults } from "../output/Renderer"
-import type { CliIO } from "../cli"
+import { defaultIO, type CliIO } from "../io"
 
 export interface RunOptions {
   readonly workflowName: string
   readonly config: ZlConfig
-  readonly verbose?: boolean
   readonly steps: ReadonlyArray<ResolvedStep>
   readonly io?: CliIO
 }
 
 export async function runWorkflow(options: RunOptions): Promise<boolean> {
-  const io: CliIO = options.io ?? {
-    stdout: (msg) => console.log(msg),
-    stderr: (msg) => console.error(msg),
-  }
+  const io = options.io ?? defaultIO
 
   const workflow = options.config.workflows[options.workflowName]
   if (!workflow) {

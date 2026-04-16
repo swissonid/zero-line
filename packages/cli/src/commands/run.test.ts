@@ -1,20 +1,7 @@
 import { describe, test, expect } from "bun:test"
 import { defineStep, type ZlConfig } from "@zl/core"
 import { runWorkflow } from "./run"
-import type { CliIO } from "../cli"
-
-function makeIO(): { io: CliIO; out: string[]; err: string[] } {
-  const out: string[] = []
-  const err: string[] = []
-  return {
-    io: {
-      stdout: (m) => out.push(m),
-      stderr: (m) => err.push(m),
-    },
-    out,
-    err,
-  }
-}
+import { makeIO } from "../test-utils/cli-io"
 
 const mkConfig = (workflows: Record<string, string[]>): ZlConfig => ({
   app: { name: "T", bundleId: "c.t" },

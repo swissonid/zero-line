@@ -1,20 +1,8 @@
 import { describe, test, expect } from "bun:test"
 import { writeFileSync, mkdirSync, rmSync } from "fs"
 import { join } from "path"
-import { runCli, defaultIO, type CliIO } from "./cli"
-
-function makeIO(): { io: CliIO; out: string[]; err: string[] } {
-  const out: string[] = []
-  const err: string[] = []
-  return {
-    io: {
-      stdout: (m) => out.push(m),
-      stderr: (m) => err.push(m),
-    },
-    out,
-    err,
-  }
-}
+import { runCli, defaultIO } from "./cli"
+import { makeIO } from "./test-utils/cli-io"
 
 function makeTmpProject(name: string, config: string): string {
   const dir = join(import.meta.dir, `__test_tmp_${name}__`)

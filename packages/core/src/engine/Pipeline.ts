@@ -56,7 +56,6 @@ export function makeDefaultContext(overrides?: Partial<StepContext>): StepContex
 }
 
 export class Pipeline {
-  private readonly steps: ReadonlyArray<ResolvedStep>
   private readonly workflow: ReadonlyArray<string>
   private readonly context: StepContext
   private readonly runtimeLayer: Layer.Layer<any, any, never>
@@ -64,15 +63,14 @@ export class Pipeline {
   private readonly stepMap: Map<string, ResolvedStep>
 
   constructor(config: PipelineConfig) {
-    this.steps = config.steps
     this.workflow = config.workflow
     this.context = makeDefaultContext(config.context)
     this.runtimeLayer = config.runtimeLayer ?? DefaultRuntimeLayer
-    this.stepMap = new Map(this.steps.map((s) => [s.name, s]))
+    this.stepMap = new Map(config.steps.map((s) => [s.name, s]))
   }
 
   async execute(): Promise<ReadonlyArray<StepResult>> {
-    const executionOrder = buildExecutionOrder(this.steps, this.workflow)
+    const executionOrder = buildExecutionOrder(Array.from(this.stepMap.values()), this.workflow)
 
     const results: StepResult[] = []
 

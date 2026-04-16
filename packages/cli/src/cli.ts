@@ -1,5 +1,8 @@
 import { loadConfig, type Platform } from "@zl/core"
 import { runWorkflow } from "./commands/run"
+import { defaultIO, type CliIO } from "./io"
+
+export { defaultIO, type CliIO }
 
 const VALID_PLATFORMS: ReadonlyArray<Platform> = ["ios", "android"]
 const VALID_PLATFORMS_HINT = `Must be one of: ${VALID_PLATFORMS.join(", ")}`
@@ -17,18 +20,7 @@ Usage:
 
 Options:
   --platform <ios|android>   Run only one platform
-  --verbose                  Show debug output
 `
-
-export interface CliIO {
-  readonly stdout: (msg: string) => void
-  readonly stderr: (msg: string) => void
-}
-
-export const defaultIO: CliIO = {
-  stdout: (msg) => console.log(msg),
-  stderr: (msg) => console.error(msg),
-}
 
 export interface RunCliOptions {
   readonly cwd: string
@@ -58,7 +50,6 @@ export async function runCli(
     return 1
   }
   const platform = rawPlatform as Platform | undefined
-  const verbose = args.includes("--verbose")
   const workflowName = command === "run" ? args[1] : command
 
   if (!workflowName) {
@@ -87,7 +78,6 @@ export async function runCli(
     const success = await runWorkflow({
       workflowName,
       config,
-      verbose,
       steps: allStepInstances as any,
       io,
     })

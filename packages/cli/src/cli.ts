@@ -2,6 +2,7 @@ import { loadConfig, type Platform } from "@zl/core"
 import { runWorkflow } from "./commands/run"
 
 const VALID_PLATFORMS: ReadonlyArray<Platform> = ["ios", "android"]
+const VALID_PLATFORMS_HINT = `Must be one of: ${VALID_PLATFORMS.join(", ")}`
 
 const HELP_TEXT = `
 zero-line (zl) — Mobile CI/CD toolkit
@@ -49,11 +50,11 @@ export async function runCli(
   const platformFlag = args.indexOf("--platform")
   const rawPlatform = platformFlag !== -1 ? args[platformFlag + 1] : undefined
   if (platformFlag !== -1 && rawPlatform === undefined) {
-    io.stderr(`--platform requires a value. Must be one of: ${VALID_PLATFORMS.join(", ")}`)
+    io.stderr(`--platform requires a value. ${VALID_PLATFORMS_HINT}`)
     return 1
   }
   if (rawPlatform && !VALID_PLATFORMS.includes(rawPlatform as Platform)) {
-    io.stderr(`Invalid platform '${rawPlatform}'. Must be one of: ${VALID_PLATFORMS.join(", ")}`)
+    io.stderr(`Invalid platform '${rawPlatform}'. ${VALID_PLATFORMS_HINT}`)
     return 1
   }
   const platform = rawPlatform as Platform | undefined

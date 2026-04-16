@@ -19,7 +19,8 @@ interface StepNode {
 
 export function buildExecutionOrder(
   allSteps: ReadonlyArray<StepNode>,
-  workflowSteps: ReadonlyArray<string>
+  workflowSteps: ReadonlyArray<string>,
+  onWarn: (message: string) => void = console.warn
 ): ReadonlyArray<string> {
   const stepMap = new Map<string, StepNode>()
   for (const step of allSteps) {
@@ -49,6 +50,12 @@ export function buildExecutionOrder(
       for (const dep of step.dependsOnSteps) {
         if (workflowSet.has(dep)) {
           visit(dep, [...path, name])
+        } else {
+          onWarn(
+            stepMap.has(dep)
+              ? `Step '${name}' dependsOnSteps '${dep}', which is not in the current workflow — dependency skipped.`
+              : `Step '${name}' dependsOnSteps '${dep}', but '${dep}' is not defined in any loaded step — dependency skipped.`
+          )
         }
       }
     }

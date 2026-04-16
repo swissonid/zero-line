@@ -49,6 +49,34 @@ describe("FileConfig", () => {
     delete process.env.__ZL_TEST_KEY__
   })
 
+  test("load fails with ConfigLoadError when the config is malformed", async () => {
+    const malformedDir = join(import.meta.dir, "__test_tmp_malformed__")
+    mkdirSync(malformedDir, { recursive: true })
+    writeFileSync(
+      join(malformedDir, "zl.config.ts"),
+      `export default { workflows: {}, platforms: {} }`
+    )
+
+    try {
+      const layer = makeFileConfigLayer(malformedDir)
+      const program = Effect.gen(function* () {
+        const config = yield* ConfigService
+        return yield* config.load()
+      })
+
+      const exit = await Effect.runPromise(Effect.exit(Effect.provide(program, layer)))
+      expect(exit._tag).toBe("Failure")
+      if (exit._tag === "Failure") {
+        const cause = exit.cause
+        const failures = Array.from(Cause.failures(cause))
+        expect(failures.some(f => (f as { _tag?: string })._tag === "ConfigLoadError")).toBe(true)
+        expect(failures.some(f => f instanceof Error && f.message.includes("app"))).toBe(true)
+      }
+    } finally {
+      rmSync(malformedDir, { recursive: true, force: true })
+    }
+  })
+
   test("load fails with ConfigLoadError when the config file is missing", async () => {
     const missingDir = join(import.meta.dir, "__does_not_exist__")
     const layer = makeFileConfigLayer(missingDir)

@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect"
 import { join } from "path"
 import { ConfigService, ConfigLoadError, SecretNotFoundError } from "../ports/ConfigService"
-import type { ZlConfig } from "../config/ConfigTypes"
+import { validateConfig } from "../config/validateConfig"
 
 export function makeFileConfigLayer(projectDir: string) {
   return Layer.succeed(ConfigService, {
@@ -10,7 +10,7 @@ export function makeFileConfigLayer(projectDir: string) {
         try: async () => {
           const configPath = join(projectDir, "zl.config.ts")
           const mod = await import(configPath)
-          return (mod.default ?? mod) as ZlConfig
+          return validateConfig(mod.default ?? mod)
         },
         catch: (err) =>
           new ConfigLoadError(

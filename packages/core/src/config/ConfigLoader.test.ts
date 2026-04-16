@@ -44,6 +44,21 @@ describe("loadConfig", () => {
     }
   })
 
+  test("throws on invalid config (missing platforms)", async () => {
+    const dir = withTmpProject(
+      "no-platforms",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        workflows: { ci: ["hello"] },
+      }`
+    )
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(/platforms/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test("surfaces import errors instead of masking them as not-found", async () => {
     const dir = withTmpProject(
       "syntax",

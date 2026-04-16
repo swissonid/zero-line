@@ -37,6 +37,10 @@ function validateConfig(raw: unknown): ZlConfig {
     issues.push("Missing 'workflows' configuration")
   }
 
+  if (!config.platforms || typeof config.platforms !== "object") {
+    issues.push("Missing 'platforms' configuration")
+  }
+
   if (issues.length > 0) {
     throw new ConfigValidationError(issues)
   }

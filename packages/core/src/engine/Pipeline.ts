@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect"
+import { Effect, Layer, ManagedRuntime } from "effect"
 import { buildExecutionOrder } from "./DependencyGraph"
 import type { ResolvedStep, StepContext } from "../step-loader/StepContract"
 import { ConsoleLoggerLive } from "../adapters/ConsoleLogger"
@@ -73,38 +73,40 @@ export class Pipeline {
     const executionOrder = buildExecutionOrder(Array.from(this.stepMap.values()), this.workflow)
 
     const results: StepResult[] = []
+    const runtime = ManagedRuntime.make(this.runtimeLayer)
 
-    for (const name of executionOrder) {
-      const step = this.stepMap.get(name)!
-      const start = performance.now()
+    try {
+      for (const name of executionOrder) {
+        const step = this.stepMap.get(name)!
+        const start = performance.now()
 
-      try {
-        let output: Record<string, unknown>
-        if (step._tag === "simple") {
-          output = await step.execute({}, this.context)
-        } else {
-          const provided = Effect.provide(
-            step.run({}),
-            this.runtimeLayer
-          ) as Effect.Effect<Record<string, unknown>, unknown, never>
-          output = await Effect.runPromise(provided)
+        try {
+          let output: Record<string, unknown>
+          if (step._tag === "simple") {
+            output = await step.execute({}, this.context)
+          } else {
+            const effect = step.run({}) as Effect.Effect<Record<string, unknown>, unknown, never>
+            output = await runtime.runPromise(effect)
+          }
+
+          results.push({
+            name,
+            status: "pass",
+            durationMs: Math.round(performance.now() - start),
+            output,
+          })
+        } catch (err) {
+          results.push({
+            name,
+            status: "fail",
+            durationMs: Math.round(performance.now() - start),
+            error: err instanceof Error ? err.message : String(err),
+          })
+          break
         }
-
-        results.push({
-          name,
-          status: "pass",
-          durationMs: Math.round(performance.now() - start),
-          output,
-        })
-      } catch (err) {
-        results.push({
-          name,
-          status: "fail",
-          durationMs: Math.round(performance.now() - start),
-          error: err instanceof Error ? err.message : String(err),
-        })
-        break
       }
+    } finally {
+      await runtime.dispose()
     }
 
     const executed = new Set(results.map((r) => r.name))

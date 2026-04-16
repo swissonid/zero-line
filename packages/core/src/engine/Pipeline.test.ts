@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { Pipeline, makeDefaultContext } from "./Pipeline"
 import { defineStep, defineEffectStep } from "../step-loader/StepContract"
 import { LoggerService } from "../ports/LoggerService"
+import { ArtifactService } from "../ports/ArtifactService"
 
 describe("Pipeline", () => {
   test("executes steps in dependency order", async () => {
@@ -88,6 +89,38 @@ describe("Pipeline", () => {
 
     expect(results[0].status).toBe("pass")
     expect(results[0].output).toEqual({ ran: true })
+  })
+
+  test("shares the artifact store across effect steps in one run", async () => {
+    const writer = defineEffectStep({
+      name: "writer",
+      run: () =>
+        Effect.gen(function* () {
+          const artifacts = yield* ArtifactService
+          yield* artifacts.put("shared", { type: "note", path: "/tmp/n", value: 42 })
+          return {}
+        }),
+    })
+    const reader = defineEffectStep({
+      name: "reader",
+      dependsOnSteps: ["writer"],
+      run: () =>
+        Effect.gen(function* () {
+          const artifacts = yield* ArtifactService
+          const found = yield* artifacts.get("shared")
+          return { value: found?.value }
+        }),
+    })
+
+    const pipeline = new Pipeline({
+      steps: [writer, reader],
+      workflow: ["writer", "reader"],
+    })
+
+    const results = await pipeline.execute()
+
+    expect(results.every((r) => r.status === "pass")).toBe(true)
+    expect(results.find((r) => r.name === "reader")?.output).toEqual({ value: 42 })
   })
 
   test("marks unreached steps as skipped after a failure", async () => {

@@ -48,4 +48,37 @@ describe("buildExecutionOrder", () => {
 
     expect(() => buildExecutionOrder(steps, ["build", "nonexistent"])).toThrow(/not found/)
   })
+
+  test("warns when dependsOnSteps points outside the current workflow", () => {
+    const steps = [
+      { name: "upload", dependsOnSteps: ["sign"] },
+      { name: "sign", dependsOnSteps: [] },
+    ]
+    const warnings: string[] = []
+
+    const order = buildExecutionOrder(steps, ["upload"], (m) => warnings.push(m))
+
+    expect(order).toEqual(["upload"])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain("upload")
+    expect(warnings[0]).toContain("sign")
+    expect(warnings[0]).toContain("not in the current workflow")
+  })
+
+  test("default onWarn routes to console.warn", () => {
+    const steps = [
+      { name: "upload", dependsOnSteps: ["sign"] },
+      { name: "sign", dependsOnSteps: [] },
+    ]
+    const original = console.warn
+    const logged: string[] = []
+    console.warn = (m: string) => logged.push(String(m))
+    try {
+      buildExecutionOrder(steps, ["upload"])
+    } finally {
+      console.warn = original
+    }
+    expect(logged).toHaveLength(1)
+    expect(logged[0]).toContain("not in the current workflow")
+  })
 })

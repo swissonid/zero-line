@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect"
 import { join } from "path"
-import { ConfigService, ConfigLoadError } from "../ports/ConfigService"
+import { ConfigService, ConfigLoadError, SecretNotFoundError } from "../ports/ConfigService"
 import type { ZlConfig } from "../config/ConfigTypes"
 
 export function makeFileConfigLayer(projectDir: string) {
@@ -21,11 +21,11 @@ export function makeFileConfigLayer(projectDir: string) {
     env: (key: string) => Effect.succeed(process.env[key]),
 
     secret: (key: string) =>
-      Effect.sync(() => {
+      Effect.suspend(() => {
         const envValue = process.env[key]
-        if (envValue !== undefined) return envValue
+        if (envValue !== undefined) return Effect.succeed(envValue)
         // TODO: OS keychain lookup (separate task)
-        return undefined
+        return Effect.fail(new SecretNotFoundError(key))
       }),
   })
 }

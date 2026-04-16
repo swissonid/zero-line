@@ -76,7 +76,7 @@ describe("FileConfig", () => {
     delete process.env.__ZL_SECRET_TEST__
   })
 
-  test("secret returns undefined when the key is missing", async () => {
+  test("secret fails with SecretNotFoundError when the key is missing", async () => {
     const layer = makeFileConfigLayer(".")
 
     const program = Effect.gen(function* () {
@@ -84,8 +84,12 @@ describe("FileConfig", () => {
       return yield* config.secret("__ZL_SECRET_ABSENT__")
     })
 
-    const result = await Effect.runPromise(Effect.provide(program, layer))
-    expect(result).toBeUndefined()
+    const exit = await Effect.runPromise(Effect.exit(Effect.provide(program, layer)))
+    expect(exit._tag).toBe("Failure")
+    const failure = Cause.failureOption((exit as Exit.Failure<SecretNotFoundError, never>).cause)
+    expect(Option.isSome(failure)).toBe(true)
+    expect(Option.getOrThrow(failure)._tag).toBe("SecretNotFoundError")
+    expect(Option.getOrThrow(failure).key).toBe("__ZL_SECRET_ABSENT__")
   })
 
   test("ConfigLoadError constructs with a message", () => {

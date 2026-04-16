@@ -52,7 +52,7 @@ export async function runCli(
   const platform = rawPlatform as Platform | undefined
   const workflowName = command === "run" ? args[1] : command
 
-  if (!workflowName) {
+  if (!workflowName || workflowName.startsWith("-")) {
     io.stderr("Please specify a workflow name. Run 'zl --help' for usage.")
     return 1
   }

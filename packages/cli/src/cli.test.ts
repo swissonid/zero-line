@@ -54,6 +54,12 @@ describe("runCli", () => {
     expect(err.join("\n")).toContain("workflow name")
   })
 
+  test("rejects a flag-like value as workflow name", async () => {
+    const { io, err } = makeIO()
+    expect(await runCli(["run", "--platform", "ios"], { cwd: "/tmp", io })).toBe(1)
+    expect(err.join("\n")).toContain("workflow name")
+  })
+
   test("returns 1 when the config file does not exist", async () => {
     const { io, err } = makeIO()
     expect(await runCli(["ci"], { cwd: "/nonexistent/xyz", io })).toBe(1)

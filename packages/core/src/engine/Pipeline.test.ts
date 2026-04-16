@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
-import { Pipeline, makeDefaultContext } from "./Pipeline"
+import { definePipeline, makeDefaultContext } from "./Pipeline"
 import { defineStep, defineEffectStep } from "../step-loader/StepContract"
 import { LoggerService } from "../ports/LoggerService"
 import { ArtifactService } from "../ports/ArtifactService"
@@ -26,7 +26,7 @@ describe("Pipeline", () => {
       },
     })
 
-    const pipeline = new Pipeline({
+    const pipeline = definePipeline({
       steps: [step1, step2],
       workflow: ["first", "second"],
     })
@@ -57,7 +57,7 @@ describe("Pipeline", () => {
       },
     })
 
-    const pipeline = new Pipeline({
+    const pipeline = definePipeline({
       steps: [step1, step2],
       workflow: ["failing", "should-not-run"],
     })
@@ -80,7 +80,7 @@ describe("Pipeline", () => {
         }),
     })
 
-    const pipeline = new Pipeline({
+    const pipeline = definePipeline({
       steps: [effectStep],
       workflow: ["effectful"],
     })
@@ -112,7 +112,7 @@ describe("Pipeline", () => {
         }),
     })
 
-    const pipeline = new Pipeline({
+    const pipeline = definePipeline({
       steps: [writer, reader],
       workflow: ["writer", "reader"],
     })
@@ -136,7 +136,7 @@ describe("Pipeline", () => {
       run: async () => ({}),
     })
 
-    const pipeline = new Pipeline({
+    const pipeline = definePipeline({
       steps: [failing, unreached],
       workflow: ["boom", "after-boom"],
     })
@@ -156,7 +156,7 @@ describe("Pipeline", () => {
       },
     })
 
-    const pipeline = new Pipeline({
+    const pipeline = definePipeline({
       steps: [step],
       workflow: ["timed"],
     })

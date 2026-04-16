@@ -55,67 +55,65 @@ export function makeDefaultContext(overrides?: Partial<StepContext>): StepContex
   }
 }
 
-export class Pipeline {
-  private readonly workflow: ReadonlyArray<string>
-  private readonly context: StepContext
-  private readonly runtimeLayer: Layer.Layer<any, any, never>
+export interface Pipeline {
+  readonly execute: () => Promise<ReadonlyArray<StepResult>>
+}
 
-  private readonly stepMap: Map<string, ResolvedStep>
+export function definePipeline(config: PipelineConfig): Pipeline {
+  const workflow = config.workflow
+  const context = makeDefaultContext(config.context)
+  const runtimeLayer = config.runtimeLayer ?? DefaultRuntimeLayer
+  const stepMap = new Map(config.steps.map((s) => [s.name, s]))
 
-  constructor(config: PipelineConfig) {
-    this.workflow = config.workflow
-    this.context = makeDefaultContext(config.context)
-    this.runtimeLayer = config.runtimeLayer ?? DefaultRuntimeLayer
-    this.stepMap = new Map(config.steps.map((s) => [s.name, s]))
-  }
+  return {
+    execute: async () => {
+      const executionOrder = buildExecutionOrder(Array.from(stepMap.values()), workflow)
 
-  async execute(): Promise<ReadonlyArray<StepResult>> {
-    const executionOrder = buildExecutionOrder(Array.from(this.stepMap.values()), this.workflow)
+      const results: StepResult[] = []
+      const runtime = ManagedRuntime.make(runtimeLayer)
 
-    const results: StepResult[] = []
-    const runtime = ManagedRuntime.make(this.runtimeLayer)
+      try {
+        for (const name of executionOrder) {
+          const step = stepMap.get(name)!
+          const start = performance.now()
 
-    try {
-      for (const name of executionOrder) {
-        const step = this.stepMap.get(name)!
-        const start = performance.now()
+          try {
+            let output: Record<string, unknown>
+            if (step._tag === "simple") {
+              output = await step.execute({}, context)
+            } else {
+              const effect = step.run({}) as Effect.Effect<Record<string, unknown>, unknown, never>
+              output = await runtime.runPromise(effect)
+            }
 
-        try {
-          let output: Record<string, unknown>
-          if (step._tag === "simple") {
-            output = await step.execute({}, this.context)
-          } else {
-            const effect = step.run({}) as Effect.Effect<Record<string, unknown>, unknown, never>
-            output = await runtime.runPromise(effect)
+            results.push({
+              name,
+              status: "pass",
+              durationMs: Math.round(performance.now() - start),
+              output,
+            })
+          } catch (err) {
+            results.push({
+              name,
+              status: "fail",
+              durationMs: Math.round(performance.now() - start),
+              error: err instanceof Error ? err.message : String(err),
+            })
+            break
           }
+        }
+      } finally {
+        await runtime.dispose()
+      }
 
-          results.push({
-            name,
-            status: "pass",
-            durationMs: Math.round(performance.now() - start),
-            output,
-          })
-        } catch (err) {
-          results.push({
-            name,
-            status: "fail",
-            durationMs: Math.round(performance.now() - start),
-            error: err instanceof Error ? err.message : String(err),
-          })
-          break
+      const executed = new Set(results.map((r) => r.name))
+      for (const name of executionOrder) {
+        if (!executed.has(name)) {
+          results.push({ name, status: "skipped", durationMs: 0 })
         }
       }
-    } finally {
-      await runtime.dispose()
-    }
 
-    const executed = new Set(results.map((r) => r.name))
-    for (const name of executionOrder) {
-      if (!executed.has(name)) {
-        results.push({ name, status: "skipped", durationMs: 0 })
-      }
-    }
-
-    return results
+      return results
+    },
   }
 }

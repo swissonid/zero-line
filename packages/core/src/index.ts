@@ -8,7 +8,7 @@ export { defineConfig, type ZlConfig, type Platform, type StepInstance } from ".
 export { loadConfig, ConfigFileNotFoundError, ConfigValidationError } from "./config/ConfigLoader"
 
 // Engine
-export { Pipeline, DefaultRuntimeLayer, type StepResult, type PipelineConfig } from "./engine/Pipeline"
+export { definePipeline, DefaultRuntimeLayer, type Pipeline, type StepResult, type PipelineConfig } from "./engine/Pipeline"
 export { buildExecutionOrder, CyclicDependencyError } from "./engine/DependencyGraph"
 
 // Ports (re-export from subpath)

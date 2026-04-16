@@ -1,4 +1,4 @@
-import { Pipeline } from "@zl/core"
+import { definePipeline } from "@zl/core"
 import type { ResolvedStep, ZlConfig } from "@zl/core"
 import { renderResults } from "../output/Renderer"
 import { defaultIO, type CliIO } from "../io"
@@ -22,7 +22,7 @@ export async function runWorkflow(options: RunOptions): Promise<boolean> {
 
   io.stdout(`\nRunning workflow: ${options.workflowName}\n`)
 
-  const pipeline = new Pipeline({
+  const pipeline = definePipeline({
     steps: options.steps,
     workflow,
   })

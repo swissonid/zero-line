@@ -86,8 +86,10 @@ describe("FileConfig", () => {
 
     const exit = await Effect.runPromise(Effect.exit(Effect.provide(program, layer)))
     expect(exit._tag).toBe("Failure")
-    expect(JSON.stringify(exit)).toContain("SecretNotFoundError")
-    expect(JSON.stringify(exit)).toContain("__ZL_SECRET_ABSENT__")
+    const failure = Cause.failureOption((exit as Exit.Failure<SecretNotFoundError, never>).cause)
+    expect(Option.isSome(failure)).toBe(true)
+    expect(Option.getOrThrow(failure)._tag).toBe("SecretNotFoundError")
+    expect(Option.getOrThrow(failure).key).toBe("__ZL_SECRET_ABSENT__")
   })
 
   test("ConfigLoadError constructs with a message", () => {

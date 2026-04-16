@@ -49,7 +49,7 @@ You can see the working cadence on the [project's Linear board](https://linear.a
 
 ### 1. Hello-world workflow
 
-The repo ships with one real step, `@zl/step-hello`. Drop this into a `zl.config.ts` at the root of any project:
+The repo will ship with a canonical hello step, `@zl/step-hello` (not yet published). The shape below shows what using it will look like:
 
 ```ts
 // zl.config.ts

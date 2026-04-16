@@ -54,6 +54,12 @@ describe("runCli", () => {
     expect(err.join("\n")).toContain("Invalid platform 'windows'")
   })
 
+  test("rejects --platform with no value", async () => {
+    const { io, err } = makeIO()
+    expect(await runCli(["ci", "--platform"], { cwd: "/tmp", io })).toBe(1)
+    expect(err.join("\n")).toContain("--platform requires a value")
+  })
+
   test("returns 1 when 'run' has no workflow name", async () => {
     const { io, err } = makeIO()
     expect(await runCli(["run"], { cwd: "/tmp", io })).toBe(1)

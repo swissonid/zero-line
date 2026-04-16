@@ -48,6 +48,10 @@ export async function runCli(
 
   const platformFlag = args.indexOf("--platform")
   const rawPlatform = platformFlag !== -1 ? args[platformFlag + 1] : undefined
+  if (platformFlag !== -1 && rawPlatform === undefined) {
+    io.stderr(`--platform requires a value. Must be one of: ${VALID_PLATFORMS.join(", ")}`)
+    return 1
+  }
   if (rawPlatform && !VALID_PLATFORMS.includes(rawPlatform as Platform)) {
     io.stderr(`Invalid platform '${rawPlatform}'. Must be one of: ${VALID_PLATFORMS.join(", ")}`)
     return 1

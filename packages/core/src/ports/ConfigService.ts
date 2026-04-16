@@ -4,7 +4,7 @@ import type { ZlConfig } from "../config/ConfigTypes"
 export interface IConfigService {
   readonly load: () => Effect.Effect<ZlConfig, ConfigLoadError>
   readonly env: (key: string) => Effect.Effect<string | undefined>
-  readonly secret: (key: string) => Effect.Effect<string | undefined, SecretNotFoundError>
+  readonly secret: (key: string) => Effect.Effect<string, SecretNotFoundError>
 }
 
 export class ConfigLoadError {

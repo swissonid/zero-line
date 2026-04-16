@@ -32,6 +32,8 @@
 | `packages/core/src/ports/ShellService.test.ts` | Port-level type + constructor tests. |
 | `packages/core/src/adapters/LocalShell.ts` | Bun-subprocess implementation. Streams stdout/stderr via `LoggerService`. SIGTERM then SIGKILL after a grace period on interruption. |
 | `packages/core/src/adapters/LocalShell.test.ts` | Integration tests against real short-lived processes (`echo`, `sleep`, `false`). |
+| `packages/core/src/adapters/LocalEnvConfig.ts` | Lightweight `ConfigService` adapter that provides `env` + `secret` via `process.env` only. `load()` fails with a descriptive error — real config loading is done via `makeFileConfigLayer(projectDir)`. Included in `DefaultRuntimeLayer` so `preflightCheck` can resolve secrets/env without a project-directory dependency. |
+| `packages/core/src/adapters/LocalEnvConfig.test.ts` | Unit tests. |
 | `packages/core/src/cli/SubcommandRegistry.ts` | Collect step sub-commands into a flat `Map<string, Handler>` indexed by `${stepName}:${sub}`. |
 | `packages/core/src/cli/SubcommandRegistry.test.ts` | Unit tests. |
 | `scratch/schema-spike/effect-schema.ts` | Spike artefact: three realistic step option schemas in `effect/Schema`. Deleted after the decision is recorded. |
@@ -44,8 +46,8 @@
 |---|---|
 | `packages/core/src/step-loader/StepContract.ts` | Rename `ResolvedStep` → `PluginStep` (and `ResolvedSimpleStep`/`ResolvedEffectStep` accordingly). Add `optionsSchema`, `requiredSecrets`, `requiredToolchains`, `requiredEnv`, `subcommands` fields to both `defineStep` and `defineEffectStep`. Introduce a new `ResolvedStep` type = `PluginStep & { options, name, dependsOnSteps }`. |
 | `packages/core/src/step-loader/StepContract.test.ts` | Tests for every new field. |
-| `packages/core/src/step-loader/StepLoader.ts` | `validateStep` becomes `validatePluginStep` (operates on plugin output, not bound step). |
-| `packages/core/src/step-loader/StepLoader.test.ts` | Adjust to new name. |
+| `packages/core/src/step-loader/StepLoader.ts` | Import-only update — types now refer to `PluginStep` instead of `ResolvedStep`. Function name `validateStep` is preserved. |
+| `packages/core/src/step-loader/StepLoader.test.ts` | No change needed (covers behaviour, not types). |
 | `packages/core/src/step-loader/StepNameResolver.ts` | No functional change; verify typings compile against new `PluginStep`. |
 | `packages/core/src/engine/Pipeline.ts` | Accept `ReadonlyArray<ResolvedStep>` (not `PluginStep`). Call `preflightCheck` before the execution loop. Pass `step.options` (not `{}`) to `execute`/`run`. Catch `StepError` specially; surface its `code` on `StepResult`. |
 | `packages/core/src/engine/Pipeline.test.ts` | Existing tests updated to the new type; new tests for preflight failure and bound-options propagation. |
@@ -154,8 +156,8 @@ Create `scratch/schema-spike/compare.ts`:
 ```ts
 import { Schema } from "effect"
 import { z } from "zod"
-import * as Effect from "scratch/schema-spike/effect-schema"
-import * as Zod from "scratch/schema-spike/zod-schema"
+import * as Effect from "./effect-schema"
+import * as Zod from "./zod-schema"
 
 const bad = {
   scheme: "App",
@@ -1599,6 +1601,130 @@ git commit -m "feat(core): pipeline pre-flight check for secrets, toolchains, en
 
 ---
 
+## Task 11b: `LocalEnvConfigLive` adapter
+
+**Files:**
+- Create: `packages/core/src/adapters/LocalEnvConfig.ts`
+- Create: `packages/core/src/adapters/LocalEnvConfig.test.ts`
+
+**Why:** `preflightCheck` requires a `ConfigService` in its environment. The existing `makeFileConfigLayer(projectDir)` adapter is a function of the project directory, not a module-level `Layer`, so it can't be baked into `DefaultRuntimeLayer`. Adding a project-dir-free env-backed `ConfigService` lets `DefaultRuntimeLayer` satisfy the preflight requirements without callers having to construct a custom layer.
+
+- [ ] **Step 1: Write failing test**
+
+Create `packages/core/src/adapters/LocalEnvConfig.test.ts`:
+
+```ts
+import { describe, test, expect } from "bun:test"
+import { Effect } from "effect"
+import { ConfigService, ConfigLoadError } from "../ports/ConfigService"
+import { LocalEnvConfigLive } from "./LocalEnvConfig"
+
+const run = <A, E>(eff: Effect.Effect<A, E, ConfigService>) =>
+  Effect.runPromiseExit(Effect.provide(eff, LocalEnvConfigLive))
+
+describe("LocalEnvConfigLive", () => {
+  test("env reads process.env", async () => {
+    process.env.__ZL_ENV_TEST__ = "v"
+    const exit = await run(
+      Effect.gen(function* () {
+        const c = yield* ConfigService
+        return yield* c.env("__ZL_ENV_TEST__")
+      })
+    )
+    expect(exit._tag).toBe("Success")
+    if (exit._tag === "Success") expect(exit.value).toBe("v")
+    delete process.env.__ZL_ENV_TEST__
+  })
+
+  test("secret returns env value when present", async () => {
+    process.env.__ZL_SECRET_PRESENT__ = "shh"
+    const exit = await run(
+      Effect.gen(function* () {
+        const c = yield* ConfigService
+        return yield* c.secret("__ZL_SECRET_PRESENT__")
+      })
+    )
+    expect(exit._tag).toBe("Success")
+    if (exit._tag === "Success") expect(exit.value).toBe("shh")
+    delete process.env.__ZL_SECRET_PRESENT__
+  })
+
+  test("secret fails with SecretNotFoundError when absent", async () => {
+    const exit = await run(
+      Effect.gen(function* () {
+        const c = yield* ConfigService
+        return yield* c.secret("__ZL_SECRET_ABSENT__")
+      })
+    )
+    expect(exit._tag).toBe("Failure")
+    expect(JSON.stringify(exit)).toContain("SecretNotFoundError")
+  })
+
+  test("load fails with descriptive ConfigLoadError directing to makeFileConfigLayer", async () => {
+    const exit = await run(
+      Effect.gen(function* () {
+        const c = yield* ConfigService
+        return yield* c.load()
+      })
+    )
+    expect(exit._tag).toBe("Failure")
+    expect(JSON.stringify(exit)).toContain("ConfigLoadError")
+    expect(JSON.stringify(exit)).toContain("makeFileConfigLayer")
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify failure**
+
+```bash
+bun test packages/core/src/adapters/LocalEnvConfig.test.ts
+```
+
+Expected: FAIL — module does not exist.
+
+- [ ] **Step 3: Implement the adapter**
+
+Create `packages/core/src/adapters/LocalEnvConfig.ts`:
+
+```ts
+import { Effect, Layer } from "effect"
+import { ConfigService, ConfigLoadError, SecretNotFoundError } from "../ports/ConfigService"
+
+export const LocalEnvConfigLive = Layer.succeed(ConfigService, {
+  load: () =>
+    Effect.fail(
+      new ConfigLoadError(
+        "LocalEnvConfigLive does not support load(); use makeFileConfigLayer(projectDir) to load zl.config.ts"
+      )
+    ),
+  env: (key: string) => Effect.succeed(process.env[key]),
+  secret: (key: string) =>
+    Effect.suspend(() => {
+      const value = process.env[key]
+      return value !== undefined
+        ? Effect.succeed(value)
+        : Effect.fail(new SecretNotFoundError(key))
+    }),
+})
+```
+
+- [ ] **Step 4: Run tests to verify pass**
+
+```bash
+bun test packages/core/src/adapters/LocalEnvConfig.test.ts
+```
+
+Expected: 4/4 PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/core/src/adapters/LocalEnvConfig.ts packages/core/src/adapters/LocalEnvConfig.test.ts
+git commit -m "feat(core): add LocalEnvConfigLive adapter for preflight (env + secret from process.env)"
+```
+
+---
+
 ## Task 12: Integrate pre-flight + bound options into `Pipeline`
 
 **Files:**
@@ -1673,7 +1799,7 @@ Expected: new tests FAIL (Pipeline still takes `PluginStep`, doesn't run preflig
 Replace `Pipeline.ts` with:
 
 ```ts
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Cause, Effect, Layer, ManagedRuntime, Option } from "effect"
 import { buildExecutionOrder } from "./DependencyGraph"
 import { preflightCheck } from "./PreflightCheck"
 import { StepError } from "./StepError"
@@ -1682,13 +1808,14 @@ import { ConsoleLoggerLive } from "../adapters/ConsoleLogger"
 import { LocalPlatformLive, detectToolchains, platformSupports } from "../adapters/LocalPlatform"
 import { MemoryArtifactStoreLive } from "../adapters/MemoryArtifactStore"
 import { LocalShellLive } from "../adapters/LocalShell"
-import { makeFileConfigLayer } from "../adapters/FileConfig"
+import { LocalEnvConfigLive } from "../adapters/LocalEnvConfig"
 
 export const DefaultRuntimeLayer = Layer.mergeAll(
   ConsoleLoggerLive,
   LocalPlatformLive,
   MemoryArtifactStoreLive,
   LocalShellLive,
+  LocalEnvConfigLive,
 )
 
 export interface StepResult {
@@ -1800,15 +1927,11 @@ export function definePipeline(config: PipelineConfig): Pipeline {
   }
 }
 
-function extractStepError(cause: unknown): StepError {
-  const text = JSON.stringify(cause)
-  const codeMatch = text.match(/"code":"([^"]+)"/)
-  const msgMatch = text.match(/"message":"([^"]+)"/)
-  return new StepError({
-    code: codeMatch?.[1] ?? "PREFLIGHT_FAILED",
-    message: msgMatch?.[1] ?? "Pre-flight check failed",
-    cause,
-  })
+function extractStepError(cause: Cause.Cause<StepError>): StepError {
+  return Option.getOrElse(
+    Cause.failureOption(cause),
+    () => new StepError({ code: "PREFLIGHT_FAILED", message: "Pre-flight check failed", cause })
+  )
 }
 ```
 
@@ -2272,6 +2395,7 @@ export { makeFileConfigLayer } from "./adapters/FileConfig"
 export { LocalPlatformLive } from "./adapters/LocalPlatform"
 export { MemoryArtifactStoreLive } from "./adapters/MemoryArtifactStore"
 export { LocalShellLive } from "./adapters/LocalShell"
+export { LocalEnvConfigLive } from "./adapters/LocalEnvConfig"
 ```
 
 Update `packages/core/src/ports/index.ts` to re-export `ShellService`:

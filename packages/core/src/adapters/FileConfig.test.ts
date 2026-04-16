@@ -68,8 +68,9 @@ describe("FileConfig", () => {
       expect(exit._tag).toBe("Failure")
       if (exit._tag === "Failure") {
         const cause = exit.cause
-        expect(JSON.stringify(cause)).toContain("ConfigLoadError")
-        expect(JSON.stringify(cause)).toContain("app")
+        const failures = Array.from(Cause.failures(cause))
+        expect(failures.some(f => (f as { _tag?: string })._tag === "ConfigLoadError")).toBe(true)
+        expect(failures.some(f => f instanceof Error && f.message.includes("app"))).toBe(true)
       }
     } finally {
       rmSync(malformedDir, { recursive: true, force: true })

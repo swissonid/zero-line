@@ -1,6 +1,15 @@
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 import { buildExecutionOrder } from "./DependencyGraph"
 import type { ResolvedStep, StepContext } from "../step-loader/StepContract"
+import { ConsoleLoggerLive } from "../adapters/ConsoleLogger"
+import { LocalPlatformLive, detectToolchains, platformSupports } from "../adapters/LocalPlatform"
+import { MemoryArtifactStoreLive } from "../adapters/MemoryArtifactStore"
+
+export const DefaultRuntimeLayer = Layer.mergeAll(
+  ConsoleLoggerLive,
+  LocalPlatformLive,
+  MemoryArtifactStoreLive,
+)
 
 export interface StepResult {
   readonly name: string
@@ -14,29 +23,33 @@ export interface PipelineConfig {
   readonly steps: ReadonlyArray<ResolvedStep>
   readonly workflow: ReadonlyArray<string>
   readonly context?: Partial<StepContext>
+  readonly runtimeLayer?: Layer.Layer<any, any, never>
 }
 
-function makeDefaultContext(overrides?: Partial<StepContext>): StepContext {
+export function makeDefaultContext(overrides?: Partial<StepContext>): StepContext {
+  const artifactStore = new Map<string, unknown>()
   return {
     logger: {
       info: (msg) => console.log(`[INFO] ${msg}`),
       warn: (msg) => console.warn(`[WARN] ${msg}`),
       error: (msg) => console.error(`[ERROR] ${msg}`),
-      debug: () => {},
+      debug: (msg) => console.debug(`[DEBUG] ${msg}`),
     },
     config: {
       env: (key) => process.env[key],
-      secret: () => undefined,
+      secret: (key) => process.env[key],
     },
     platform: {
       os: () => process.platform,
-      availableToolchains: () => [],
-      supports: () => true,
+      availableToolchains: () => detectToolchains(),
+      supports: (name) => platformSupports(name),
     },
     artifacts: {
-      put: () => {},
-      get: () => undefined,
-      list: () => [],
+      put: (key, artifact) => {
+        artifactStore.set(key, artifact)
+      },
+      get: (key) => artifactStore.get(key),
+      list: () => Array.from(artifactStore.keys()),
     },
     ...overrides,
   }
@@ -46,6 +59,7 @@ export class Pipeline {
   private readonly steps: ReadonlyArray<ResolvedStep>
   private readonly workflow: ReadonlyArray<string>
   private readonly context: StepContext
+  private readonly runtimeLayer: Layer.Layer<any, any, never>
 
   private readonly stepMap: Map<string, ResolvedStep>
 
@@ -53,6 +67,7 @@ export class Pipeline {
     this.steps = config.steps
     this.workflow = config.workflow
     this.context = makeDefaultContext(config.context)
+    this.runtimeLayer = config.runtimeLayer ?? DefaultRuntimeLayer
     this.stepMap = new Map(this.steps.map((s) => [s.name, s]))
   }
 
@@ -70,7 +85,11 @@ export class Pipeline {
         if (step._tag === "simple") {
           output = await step.execute({}, this.context)
         } else {
-          output = await Effect.runPromise(step.run({}))
+          const provided = Effect.provide(
+            step.run({}),
+            this.runtimeLayer
+          ) as Effect.Effect<Record<string, unknown>, unknown, never>
+          output = await Effect.runPromise(provided)
         }
 
         results.push({

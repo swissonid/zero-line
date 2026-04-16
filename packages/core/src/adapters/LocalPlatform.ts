@@ -2,7 +2,7 @@ import { Effect, Layer } from "effect"
 import { PlatformService, type OS, type Toolchain } from "../ports/PlatformService"
 import type { Platform } from "../config/ConfigTypes"
 
-function detectToolchains(): Toolchain[] {
+export function detectToolchains(): Toolchain[] {
   const toolchains: Toolchain[] = []
   try {
     const result = Bun.spawnSync(["xcodebuild", "-version"])
@@ -17,15 +17,16 @@ function detectToolchains(): Toolchain[] {
   return toolchains
 }
 
+export function platformSupports(platform: string): boolean {
+  if (platform === "ios") return process.platform === "darwin"
+  if (platform === "android") return true
+  return false
+}
+
 export const LocalPlatformLive = Layer.succeed(PlatformService, {
   os: () => Effect.succeed(process.platform as OS),
 
   availableToolchains: () => Effect.sync(() => detectToolchains()),
 
-  supports: (platform: Platform) =>
-    Effect.sync(() => {
-      if (platform === "ios") return process.platform === "darwin"
-      if (platform === "android") return true
-      return false
-    }),
+  supports: (platform: Platform) => Effect.sync(() => platformSupports(platform)),
 })

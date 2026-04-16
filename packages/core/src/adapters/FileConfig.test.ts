@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
-import { ConfigService } from "../ports/ConfigService"
+import { ConfigService, ConfigLoadError } from "../ports/ConfigService"
 import { makeFileConfigLayer } from "./FileConfig"
 import { writeFileSync, mkdirSync, rmSync } from "fs"
 import { join } from "path"
@@ -47,5 +47,50 @@ describe("FileConfig", () => {
     expect(result).toBe("test-value")
 
     delete process.env.__ZL_TEST_KEY__
+  })
+
+  test("load fails with ConfigLoadError when the config file is missing", async () => {
+    const missingDir = join(import.meta.dir, "__does_not_exist__")
+    const layer = makeFileConfigLayer(missingDir)
+
+    const program = Effect.gen(function* () {
+      const config = yield* ConfigService
+      return yield* config.load()
+    })
+
+    const exit = await Effect.runPromise(Effect.exit(Effect.provide(program, layer)))
+    expect(exit._tag).toBe("Failure")
+  })
+
+  test("secret reads from process.env when present", async () => {
+    process.env.__ZL_SECRET_TEST__ = "shh"
+    const layer = makeFileConfigLayer(".")
+
+    const program = Effect.gen(function* () {
+      const config = yield* ConfigService
+      return yield* config.secret("__ZL_SECRET_TEST__")
+    })
+
+    const result = await Effect.runPromise(Effect.provide(program, layer))
+    expect(result).toBe("shh")
+    delete process.env.__ZL_SECRET_TEST__
+  })
+
+  test("secret returns undefined when the key is missing", async () => {
+    const layer = makeFileConfigLayer(".")
+
+    const program = Effect.gen(function* () {
+      const config = yield* ConfigService
+      return yield* config.secret("__ZL_SECRET_ABSENT__")
+    })
+
+    const result = await Effect.runPromise(Effect.provide(program, layer))
+    expect(result).toBeUndefined()
+  })
+
+  test("ConfigLoadError constructs with a message", () => {
+    const err = new ConfigLoadError("boom")
+    expect(err.message).toBe("boom")
+    expect(err._tag).toBe("ConfigLoadError")
   })
 })

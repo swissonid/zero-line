@@ -21,16 +21,19 @@ export function validateStep(step: unknown): ValidationResult {
     return { valid: false, error: "Step must have a non-empty 'name' string" }
   }
 
+  if (s._tag !== "simple" && s._tag !== "effect") {
+    return {
+      valid: false,
+      error: `Step '${s.name}' has invalid _tag '${String(s._tag)}' (use defineStep or defineEffectStep)`,
+    }
+  }
+
   if (s._tag === "simple" && typeof s.execute !== "function") {
     return { valid: false, error: `Step '${s.name}' is a simple step but has no 'execute' function` }
   }
 
   if (s._tag === "effect" && typeof s.run !== "function") {
     return { valid: false, error: `Step '${s.name}' is an effect step but has no 'run' function` }
-  }
-
-  if (!s._tag) {
-    return { valid: false, error: `Step '${s.name}' has no _tag (use defineStep or defineEffectStep)` }
   }
 
   return { valid: true }

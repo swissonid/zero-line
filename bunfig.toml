@@ -2,5 +2,11 @@
 peer = false
 
 [test]
-coverage = false
-coverageThreshold = { line = 80, function = 80, statement = 80 }
+coverage = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageThreshold = { line = 1.0, function = 1.0, statement = 1.0 }
+coveragePathIgnorePatterns = [
+  "packages/core/src/ports/**",
+  "**/__test_tmp*/**",
+]

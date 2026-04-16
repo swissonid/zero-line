@@ -42,4 +42,17 @@ describe("loadConfig", () => {
 
     rmSync(tmpDir, { recursive: true, force: true })
   })
+
+  test("surfaces import errors instead of masking them as not-found", async () => {
+    const tmpDir = join(import.meta.dir, "__test_tmp_syntax__")
+    mkdirSync(tmpDir, { recursive: true })
+    writeFileSync(
+      join(tmpDir, "zl.config.ts"),
+      `export default { app: { name: "X", bundleId: "x" }, workflows: {} `
+    )
+
+    expect(loadConfig(tmpDir)).rejects.not.toThrow(ConfigFileNotFoundError)
+
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
 })

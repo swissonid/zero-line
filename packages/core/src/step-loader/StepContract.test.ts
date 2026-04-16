@@ -7,7 +7,7 @@ describe("defineStep", () => {
   test("creates a valid step from async function", () => {
     const step = defineStep({
       name: "greet",
-      run: async (opts, ctx) => {
+      run: async (_opts, _ctx) => {
         return { message: "hello" }
       },
     })
@@ -21,7 +21,7 @@ describe("defineStep", () => {
     const step = defineStep({
       name: "build",
       dependsOnSteps: ["sign"],
-      run: async (opts, ctx) => {
+      run: async (_opts, _ctx) => {
         return {}
       },
     })
@@ -53,7 +53,7 @@ describe("defineEffectStep", () => {
     const step = defineEffectStep({
       name: "greet-effect",
       dependsOnSteps: ["sign"],
-      run: (opts: Record<string, unknown>) =>
+      run: (_opts: Record<string, unknown>) =>
         Effect.gen(function* () {
           const logger = yield* LoggerService
           yield* logger.info("hello from effect step")

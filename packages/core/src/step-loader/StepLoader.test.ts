@@ -24,6 +24,38 @@ describe("validateStep", () => {
     const result = validateStep(step)
     expect(result.valid).toBe(false)
   })
+
+  test("rejects step with unknown _tag", () => {
+    const step = { _tag: "custom", name: "weird", execute: async () => ({}) } as any
+    const result = validateStep(step)
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain("_tag")
+  })
+
+  test("rejects step without _tag", () => {
+    const step = { name: "no-tag", execute: async () => ({}) } as any
+    const result = validateStep(step)
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain("_tag")
+  })
+
+  test("rejects non-object values", () => {
+    expect(validateStep(null).valid).toBe(false)
+    expect(validateStep("not a step" as any).valid).toBe(false)
+    expect(validateStep(42 as any).valid).toBe(false)
+  })
+
+  test("rejects an object with a non-string name", () => {
+    const result = validateStep({ _tag: "simple", execute: async () => ({}) } as any)
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain("name")
+  })
+
+  test("rejects an effect step missing run", () => {
+    const result = validateStep({ _tag: "effect", name: "broken" } as any)
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain("run")
+  })
 })
 
 describe("loadSteps", () => {

@@ -4,6 +4,7 @@ import { definePipeline, DefaultRuntimeLayer, makeDefaultContext } from "./Pipel
 import { defineStep, defineEffectStep } from "../step-loader/StepContract"
 import { LoggerService } from "../ports/LoggerService"
 import { ArtifactService } from "../ports/ArtifactService"
+import { StepError } from "./StepError"
 
 // Test harness: run a pipeline's execute Effect with the default runtime layer
 // and return the resolved StepResult array.
@@ -189,6 +190,58 @@ describe("Pipeline", () => {
     const results = (await runPipeline(pipeline)) as ReadonlyArray<{ durationMs: number }>
 
     expect(results[0].durationMs).toBeGreaterThanOrEqual(40)
+  })
+
+  test("captures StepError.code on StepResult when an effect step fails with StepError", async () => {
+    const failing = defineEffectStep({
+      name: "preflight",
+      run: () =>
+        Effect.fail(
+          new StepError({
+            code: "PREFLIGHT_MISSING_SECRETS",
+            message: "Missing secret: APPLE_API_KEY",
+          })
+        ),
+    })
+
+    const pipeline = definePipeline({
+      steps: [failing],
+      workflow: ["preflight"],
+    })
+
+    const results = (await runPipeline(pipeline)) as ReadonlyArray<{
+      status: string
+      error?: string
+      code?: string
+    }>
+
+    expect(results[0].status).toBe("fail")
+    expect(results[0].code).toBe("PREFLIGHT_MISSING_SECRETS")
+    expect(results[0].error).toBe("Missing secret: APPLE_API_KEY")
+  })
+
+  test("omits code on StepResult when a step fails with a non-StepError", async () => {
+    const failing = defineStep({
+      name: "boom",
+      run: async () => {
+        throw new Error("generic failure")
+      },
+    })
+
+    const pipeline = definePipeline({
+      steps: [failing],
+      workflow: ["boom"],
+    })
+
+    const results = (await runPipeline(pipeline)) as ReadonlyArray<{
+      status: string
+      error?: string
+      code?: string
+    }>
+
+    expect(results[0].status).toBe("fail")
+    expect(results[0].error).toBe("generic failure")
+    expect(results[0].code).toBeUndefined()
   })
 
   test("execute is an Effect, not a function", () => {

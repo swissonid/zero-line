@@ -157,45 +157,49 @@ export function definePipeline<R = never>(
  * The `R` channel reflects the caller-declared service union — the caller of
  * `definePipeline` attests via the generic that the layer they provide will
  * satisfy every step's Effect runtime requirements.
+ *
+ * Wrapped with {@link Effect.fn} so each per-step invocation creates a
+ * `Pipeline.runOneStep` span; the step's own name is attached as an attribute
+ * so span trees are easy to scan when a workflow runs dozens of steps.
  */
-function runOneStep<R>(
+const runOneStep = Effect.fn("Pipeline.runOneStep")(function* <R>(
   step: PluginStep,
   context: StepContext
-): Effect.Effect<StepResult, never, R> {
-  return Effect.gen(function* () {
-    const start = performance.now()
+) {
+  const start = performance.now()
 
-    const either =
-      step._tag === "simple"
-        ? yield* Effect.either(
-            Effect.tryPromise({
-              try: () => step.execute({}, context),
-              catch: (err) => err,
-            })
-          )
-        : yield* Effect.either(
-            // The compiled step surface erases R to `unknown`. We narrow it
-            // to the pipeline's declared `R` so the effect flows through
-            // without the caller having to cast. The caller is responsible
-            // for providing a layer satisfying `R` before running.
-            step.run({}) as Effect.Effect<Record<string, unknown>, unknown, R>
-          )
+  const either =
+    step._tag === "simple"
+      ? yield* Effect.either(
+          Effect.tryPromise({
+            try: () => step.execute({}, context),
+            catch: (err) => err,
+          })
+        )
+      : yield* Effect.either(
+          // The compiled step surface erases R to `unknown`. We narrow it
+          // to the pipeline's declared `R` so the effect flows through
+          // without the caller having to cast. The caller is responsible
+          // for providing a layer satisfying `R` before running.
+          step.run({}) as Effect.Effect<Record<string, unknown>, unknown, R>
+        )
 
-    const durationMs = Math.round(performance.now() - start)
+  const durationMs = Math.round(performance.now() - start)
 
-    if (either._tag === "Right") {
-      return {
-        name: step.name,
-        status: "pass" as const,
-        durationMs,
-        output: either.right,
-      }
-    }
-    return {
+  if (either._tag === "Right") {
+    const result: StepResult = {
       name: step.name,
-      status: "fail" as const,
+      status: "pass",
       durationMs,
-      error: either.left instanceof Error ? either.left.message : String(either.left),
+      output: either.right,
     }
-  })
-}
+    return result
+  }
+  const result: StepResult = {
+    name: step.name,
+    status: "fail",
+    durationMs,
+    error: either.left instanceof Error ? either.left.message : String(either.left),
+  }
+  return result
+})

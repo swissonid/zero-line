@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test"
 import { Effect, Fiber } from "effect"
 import { ShellService } from "../ports/ShellService"
-import { LocalShellLive } from "./LocalShell"
+import { LocalShellLive, runWithProcess, type SpawnedProcess } from "./LocalShell"
 
 const runWithShell = <A, E>(eff: Effect.Effect<A, E, ShellService>) =>
   Effect.runPromise(Effect.provide(eff, LocalShellLive))
@@ -137,5 +137,95 @@ describe("LocalShell", () => {
     )
     expect(exit._tag).toBe("Failure")
     expect(JSON.stringify(exit)).toContain("TIMEOUT")
+  })
+
+  /**
+   * A manually-controllable fake {@link SpawnedProcess}. The test resolves
+   * `exitedResolve(code)` when it wants the "process" to exit, and inspects
+   * `killCalls` to assert which signals were delivered.
+   *
+   * `stdout` / `stderr` are empty streams that close immediately — we only
+   * care about the exit/kill lifecycle for these tests.
+   */
+  function makeFakeProc(): {
+    proc: SpawnedProcess
+    killCalls: Array<"SIGTERM" | "SIGKILL">
+    exitedResolve: (code: number) => void
+  } {
+    const killCalls: Array<"SIGTERM" | "SIGKILL"> = []
+    let exitedResolve!: (code: number) => void
+    const exited = new Promise<number>((resolve) => {
+      exitedResolve = resolve
+    })
+    const emptyStream = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close()
+        },
+      })
+    const proc: SpawnedProcess = {
+      stdout: emptyStream(),
+      stderr: emptyStream(),
+      exited,
+      kill: (signal) => {
+        killCalls.push(signal)
+      },
+    }
+    return { proc, killCalls, exitedResolve }
+  }
+
+  test("SIGKILL escalation is interrupted when the process exits cleanly inside the grace period", async () => {
+    const { proc, killCalls, exitedResolve } = makeFakeProc()
+
+    const fiber = Effect.runFork(runWithProcess({ argv: ["fake"] }, proc))
+
+    // Give the Effect runtime a moment to reach `Deferred.await` and
+    // register the `onInterrupt` hook before we pull the interrupt.
+    await new Promise((r) => setTimeout(r, 50))
+
+    // Interrupt: this runs `onInterrupt`, which forks the kill-escalation
+    // daemon. The daemon synchronously sends SIGTERM, then waits up to
+    // SIGTERM_GRACE_MS for `proc.exited` to resolve before escalating.
+    const exitPromise = Effect.runPromise(Fiber.interrupt(fiber))
+
+    // Wait long enough for SIGTERM to be delivered, but comfortably inside
+    // the 1_000ms grace period.
+    await new Promise((r) => setTimeout(r, 200))
+    expect(killCalls).toEqual(["SIGTERM"])
+
+    // Process exits cleanly mid-grace-period. The daemon's exit
+    // subscription fires, the escalation finishes without ever sending
+    // SIGKILL, and the `setTimeout` it scheduled is cleared by the
+    // `Effect.async` cleanup.
+    exitedResolve(0)
+
+    await exitPromise
+
+    // Wait past the full grace period to confirm the SIGKILL branch was
+    // genuinely skipped (not just delayed).
+    await new Promise((r) => setTimeout(r, 1_200))
+
+    expect(killCalls).toEqual(["SIGTERM"])
+    expect(killCalls).not.toContain("SIGKILL")
+  })
+
+  test("SIGKILL escalation still fires when the process hangs past the grace period", async () => {
+    const { proc, killCalls, exitedResolve } = makeFakeProc()
+
+    const fiber = Effect.runFork(runWithProcess({ argv: ["fake"] }, proc))
+    await new Promise((r) => setTimeout(r, 50))
+
+    const exitPromise = Effect.runPromise(Fiber.interrupt(fiber))
+
+    // Wait past the 1_000ms grace period. The process hasn't exited, so
+    // the escalation's timer fires and SIGKILL is delivered.
+    await new Promise((r) => setTimeout(r, 1_200))
+
+    expect(killCalls).toEqual(["SIGTERM", "SIGKILL"])
+
+    // Let the fake process exit so the main fiber's interrupt finalizers
+    // can complete and the test can clean up.
+    exitedResolve(143)
+    await exitPromise
   })
 })

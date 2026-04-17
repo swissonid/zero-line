@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect"
+import { Deferred, Duration, Effect, Fiber, Layer } from "effect"
 import {
   ShellService,
   ShellError,
@@ -16,48 +16,199 @@ import {
 const SIGTERM_GRACE_MS = 1_000
 
 /**
- * Low-level primitive that wraps a single `Bun.spawn` invocation in an
- * `Effect.async`, threading cancellation and timeout handling through the
- * fiber.
+ * Minimal, structural subset of `Bun.Subprocess` that {@link runWithProcess}
+ * depends on. Pulling this out as an interface lets tests swap in a fake in
+ * `LocalShell.test.ts` without spawning a real OS process — we only need to
+ * observe `kill` calls and drive the lifecycle of `proc.exited` /
+ * `proc.stdout` / `proc.stderr`.
+ */
+export interface SpawnedProcess {
+  readonly stdout: ReadableStream<Uint8Array>
+  readonly stderr: ReadableStream<Uint8Array>
+  readonly exited: Promise<number>
+  readonly kill: (signal: "SIGTERM" | "SIGKILL") => void
+}
+
+/**
+ * Low-level primitive that drives an already-spawned process to completion
+ * inside the Effect runtime.
  *
- * The effect completes in one of three ways:
- * 1. The subprocess exits on its own. Exit code 0 → `ShellResult`; any other
- *    code → `ShellError("NON_ZERO_EXIT")`.
- * 2. `opts.timeoutMs` elapses first. We SIGTERM (with a SIGKILL escalation
- *    after {@link SIGTERM_GRACE_MS}) and fail with
- *    `ShellError("TIMEOUT")`.
- * 3. The caller interrupts the fiber. Same SIGTERM→SIGKILL sequence; the
- *    fiber completes as an interrupt (no custom ShellError — Effect's own
- *    interrupt signal carries the meaning).
+ * The outcome is gated by a single {@link Deferred} — Effect's single-shot
+ * completion primitive — which replaces the ad-hoc `settled: boolean` flag
+ * the original `Effect.async` implementation used to protect `resume` from a
+ * multi-way race (process-exit / timeout / caller-interrupt).
  *
- * `settled` is the single source of truth for "which path won the race"; it
- * prevents us from calling `resume` twice or killing a process that already
- * exited.
+ * Cooperating fibers:
+ *
+ * 1. **Collect fiber** — awaits stdout/stderr/exit. On exit-0 it succeeds the
+ *    deferred with a {@link ShellResult}; on any non-zero exit it fails with
+ *    `ShellError("NON_ZERO_EXIT")`.
+ * 2. **Timeout fiber** (only when `opts.timeoutMs` is set) — sleeps, then
+ *    fails the deferred with `ShellError("TIMEOUT")` and forks the
+ *    SIGTERM→SIGKILL escalation as a daemon.
+ * 3. **Kill-escalation fiber** (forked on timeout or on caller interrupt) —
+ *    sends SIGTERM, then waits for either `proc.exited` to resolve or the
+ *    grace period to elapse. Only if the timer wins does it send SIGKILL.
+ *    The escalation is forked as a daemon so it outlives the main fiber's
+ *    interrupt finalizer, but lives inside {@link Effect.async} so the timer
+ *    is still tracked by the Effect runtime (and cleaned up via the
+ *    returned finalizer if the daemon itself is interrupted).
+ *
+ * `Effect.ensuring` interrupts the collect and timeout fibers once the main
+ * fiber leaves (whether via success, failure, or interrupt), so no dangling
+ * Effect work outlives the returned Effect.
+ */
+export function runWithProcess(
+  opts: ShellSpawnOptions,
+  proc: SpawnedProcess
+): Effect.Effect<ShellResult, ShellError> {
+  return Effect.gen(function* () {
+    const deferred = yield* Deferred.make<ShellResult, ShellError>()
+
+    /**
+     * Sends SIGTERM, waits for either `proc.exited` to resolve or the grace
+     * period to expire, and (only in the latter case) escalates to SIGKILL.
+     *
+     * We could not model the "race between process-exit and grace period"
+     * with `Effect.race` / `Effect.timeout` here: observation shows those
+     * primitives do not reliably fire their sleep branch inside a daemon
+     * fiber once the main Bun test fiber has completed. `Effect.async`
+     * hand-rolls the equivalent race via a native `setTimeout` + a `.then()`
+     * subscription on `proc.exited`, but crucially the timer is scoped to
+     * the Effect: if this fiber is interrupted, the returned finalizer
+     * clears the timer — no leaked `setTimeout` like the pre-refactor
+     * implementation had.
+     */
+    const killEscalation = Effect.gen(function* () {
+      try {
+        proc.kill("SIGTERM")
+      } catch {
+        // process already exited / reaped (ESRCH) — nothing to do
+      }
+
+      const exitedCleanly = yield* Effect.async<boolean>((resume) => {
+        let done = false
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const finishWith = (exited: boolean) => {
+          if (done) return
+          done = true
+          if (timer !== undefined) clearTimeout(timer)
+          resume(Effect.succeed(exited))
+        }
+        proc.exited.then(
+          () => finishWith(true),
+          () => finishWith(true)
+        )
+        timer = setTimeout(() => finishWith(false), SIGTERM_GRACE_MS)
+        return Effect.sync(() => {
+          if (done) return
+          done = true
+          if (timer !== undefined) clearTimeout(timer)
+        })
+      })
+
+      if (!exitedCleanly) {
+        try {
+          proc.kill("SIGKILL")
+        } catch {
+          // process already exited / reaped (ESRCH) — nothing to do
+        }
+      }
+    })
+
+    const collectFiber = yield* Effect.fork(
+      Effect.tryPromise({
+        try: () =>
+          Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+            proc.exited,
+          ]),
+        catch: (err) =>
+          new ShellError({
+            code: "SPAWN_FAILED",
+            message: err instanceof Error ? err.message : String(err),
+            cause: err,
+          }),
+      }).pipe(
+        Effect.flatMap(([stdout, stderr, exitCode]) =>
+          exitCode === 0
+            ? Deferred.succeed(deferred, { exitCode, stdout, stderr })
+            : Deferred.fail(
+                deferred,
+                new ShellError({
+                  code: "NON_ZERO_EXIT",
+                  message:
+                    `Command '${opts.argv.join(" ")}' exited with ${exitCode}` +
+                    (stderr ? `\nstderr: ${stderr}` : ""),
+                  exitCode,
+                })
+              )
+        ),
+        Effect.catchAll((err) => Deferred.fail(deferred, err))
+      )
+    )
+
+    const timeoutFiber =
+      opts.timeoutMs !== undefined
+        ? yield* Effect.fork(
+            Effect.sleep(Duration.millis(opts.timeoutMs)).pipe(
+              Effect.andThen(
+                Effect.all([
+                  Deferred.fail(
+                    deferred,
+                    new ShellError({
+                      code: "TIMEOUT",
+                      message: `Command '${opts.argv.join(" ")}' timed out after ${opts.timeoutMs}ms`,
+                    })
+                  ),
+                  // Daemon so the kill escalation survives this fiber being
+                  // interrupted by the `ensuring` block once the main await
+                  // resolves with TIMEOUT.
+                  Effect.forkDaemon(killEscalation),
+                ])
+              )
+            )
+          )
+        : undefined
+
+    const result = yield* Deferred.await(deferred).pipe(
+      Effect.onInterrupt(() =>
+        // On caller-interrupt we fork the escalation as a daemon — the
+        // current fiber is being torn down so a plain `fork` would be
+        // interrupted immediately along with its parent.
+        Effect.forkDaemon(killEscalation).pipe(Effect.asVoid)
+      ),
+      Effect.ensuring(
+        Effect.all([
+          Fiber.interrupt(collectFiber),
+          timeoutFiber ? Fiber.interrupt(timeoutFiber) : Effect.void,
+        ])
+      )
+    )
+
+    return result
+  })
+}
+
+/**
+ * Validates `opts.argv`, spawns the subprocess via `Bun.spawn`, then hands
+ * off to {@link runWithProcess}. Exposed separately so tests can exercise
+ * the post-spawn logic against a fake {@link SpawnedProcess} without
+ * actually forking an OS process.
  */
 function spawnEffect(
   opts: ShellSpawnOptions
 ): Effect.Effect<ShellResult, ShellError> {
-  return Effect.async<ShellResult, ShellError>((resume) => {
+  return Effect.gen(function* () {
     const [command, ...args] = opts.argv
     if (!command) {
-      resume(
-        Effect.fail(
-          new ShellError({
-            code: "EMPTY_ARGV",
-            message: "argv must have at least one entry",
-          })
-        )
+      return yield* Effect.fail(
+        new ShellError({
+          code: "EMPTY_ARGV",
+          message: "argv must have at least one entry",
+        })
       )
-      return
-    }
-
-    let settled = false
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
-    let killEscalationHandle: ReturnType<typeof setTimeout> | undefined
-
-    const clearTimers = () => {
-      if (timeoutHandle) clearTimeout(timeoutHandle)
-      if (killEscalationHandle) clearTimeout(killEscalationHandle)
     }
 
     let proc: ReturnType<typeof Bun.spawn<"ignore", "pipe", "pipe">>
@@ -69,107 +220,16 @@ function spawnEffect(
         stderr: "pipe",
       })
     } catch (err) {
-      settled = true
-      resume(
-        Effect.fail(
-          new ShellError({
-            code: "SPAWN_FAILED",
-            message: err instanceof Error ? err.message : String(err),
-            cause: err,
-          })
-        )
+      return yield* Effect.fail(
+        new ShellError({
+          code: "SPAWN_FAILED",
+          message: err instanceof Error ? err.message : String(err),
+          cause: err,
+        })
       )
-      return
     }
 
-    Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ])
-      .then(([stdout, stderr, exitCode]) => {
-        if (settled) return
-        settled = true
-        clearTimers()
-        if (exitCode === 0) {
-          resume(Effect.succeed({ exitCode, stdout, stderr }))
-        } else {
-          resume(
-            Effect.fail(
-              new ShellError({
-                code: "NON_ZERO_EXIT",
-                message:
-                  `Command '${opts.argv.join(" ")}' exited with ${exitCode}` +
-                  (stderr ? `\nstderr: ${stderr}` : ""),
-                exitCode,
-              })
-            )
-          )
-        }
-      })
-      .catch((err) => {
-        if (settled) return
-        settled = true
-        clearTimers()
-        resume(
-          Effect.fail(
-            new ShellError({
-              code: "SPAWN_FAILED",
-              message: err instanceof Error ? err.message : String(err),
-              cause: err,
-            })
-          )
-        )
-      })
-
-    if (opts.timeoutMs !== undefined) {
-      timeoutHandle = setTimeout(() => {
-        if (settled) return
-        settled = true
-        try {
-          proc.kill("SIGTERM")
-        } catch {
-          // process already exited / reaped (ESRCH) — nothing to do
-        }
-        killEscalationHandle = setTimeout(() => {
-          try {
-            proc.kill("SIGKILL")
-          } catch {
-            // process already exited / reaped (ESRCH) — nothing to do
-          }
-        }, SIGTERM_GRACE_MS)
-        resume(
-          Effect.fail(
-            new ShellError({
-              code: "TIMEOUT",
-              message: `Command '${opts.argv.join(" ")}' timed out after ${opts.timeoutMs}ms`,
-            })
-          )
-        )
-      }, opts.timeoutMs)
-    }
-
-    // Cancellation path: Effect calls this finalizer on interrupt. We signal
-    // the subprocess with SIGTERM, schedule a SIGKILL escalation, and clear
-    // any pending timeout timer so it can't fire after interrupt.
-    return Effect.sync(() => {
-      if (!settled) {
-        settled = true
-        try {
-          proc.kill("SIGTERM")
-        } catch {
-          // process already exited / reaped (ESRCH) — nothing to do
-        }
-        killEscalationHandle = setTimeout(() => {
-          try {
-            proc.kill("SIGKILL")
-          } catch {
-            // process already exited / reaped (ESRCH) — nothing to do
-          }
-        }, SIGTERM_GRACE_MS)
-      }
-      if (timeoutHandle) clearTimeout(timeoutHandle)
-    })
+    return yield* runWithProcess(opts, proc)
   })
 }
 
@@ -191,12 +251,14 @@ function spawnEffect(
  *   attached.
  * - `opts.timeoutMs` elapses before exit → `ShellError("TIMEOUT")`. The
  *   subprocess receives SIGTERM immediately and SIGKILL after a
- *   {@link SIGTERM_GRACE_MS}ms grace period.
+ *   {@link SIGTERM_GRACE_MS}ms grace period — but the SIGKILL is skipped if
+ *   the process exits cleanly inside that window.
  *
  * Cancellation:
  * - On `Effect.interrupt` of the fiber running `spawn`, the subprocess is
- *   sent SIGTERM followed by SIGKILL after the same grace period. The fiber
- *   completes as an interrupt rather than a typed failure.
+ *   sent SIGTERM followed by SIGKILL after the same grace period (same
+ *   clean-exit skip). The fiber completes as an interrupt rather than a
+ *   typed failure.
  */
 export const LocalShellLive = Layer.succeed(ShellService, {
   spawn: (opts) => spawnEffect(opts),

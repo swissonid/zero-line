@@ -23,6 +23,8 @@ export function makeFileConfigLayer(projectDir: string) {
 
     env: (key: string) => Effect.succeed(process.env[key]),
 
+    // Env vars are the only source for now; OS-keychain fallback arrives
+    // with ZER-122 (M-A2 Task 5 — SecretStore wiring).
     secret: (key: string) =>
       Effect.fromNullable(process.env[key]).pipe(
         Effect.mapError(() => new SecretNotFoundError(key))

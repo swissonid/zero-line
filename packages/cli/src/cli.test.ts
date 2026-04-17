@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test"
-import { writeFileSync, mkdirSync, rmSync } from "fs"
+import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "fs"
 import { join } from "path"
 import { runCli, defaultIO } from "./cli"
 import { makeIO } from "./test-utils/cli-io"
@@ -125,6 +125,33 @@ describe("runCli", () => {
       const { io, err } = makeIO()
       expect(await runCli(["ci"], { cwd: dir, io })).toBe(1)
       expect(err.join("\n").length).toBeGreaterThan(0)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("'init' scaffolds a zl.config.ts and returns 0", async () => {
+    const dir = join(import.meta.dir, "__test_tmp_cli_init__")
+    mkdirSync(dir, { recursive: true })
+    try {
+      const { io } = makeIO({ answers: ["App", "", "ios"] })
+      expect(await runCli(["init"], { cwd: dir, io })).toBe(0)
+      expect(existsSync(join(dir, "zl.config.ts"))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("'init --force' runs without requiring an existing config", async () => {
+    const dir = join(import.meta.dir, "__test_tmp_cli_init_force__")
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, "zl.config.ts"), "// old")
+    try {
+      const { io } = makeIO({ answers: ["App", "", "ios"] })
+      expect(await runCli(["init", "--force"], { cwd: dir, io })).toBe(0)
+      // Confirms force path rewrote the file.
+      const contents = readFileSync(join(dir, "zl.config.ts"), "utf8")
+      expect(contents).not.toBe("// old")
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

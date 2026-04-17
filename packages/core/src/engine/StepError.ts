@@ -16,4 +16,18 @@ export class StepError extends Error {
     this.name = "StepError"
     this.code = init.code
   }
+
+  // `Error.prototype.message` is non-enumerable, so `JSON.stringify(err)`
+  // drops it. Effect's Cause printer and diagnostics that stringify failures
+  // (e.g. pre-flight error output) need the full message — expose it
+  // explicitly alongside `_tag` and `code`.
+  toJSON() {
+    return {
+      _tag: this._tag,
+      code: this.code,
+      message: this.message,
+      name: this.name,
+      ...(this.cause !== undefined ? { cause: this.cause } : {}),
+    }
+  }
 }

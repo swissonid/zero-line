@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect"
 import { buildExecutionOrder } from "./DependencyGraph"
+import { StepError } from "./StepError"
 import type { PluginStep, StepContext } from "../step-loader/StepContract"
 import { ConsoleLoggerLive } from "../adapters/ConsoleLogger"
 import { LocalPlatformLive, detectToolchains, platformSupports } from "../adapters/LocalPlatform"
@@ -26,6 +27,12 @@ export interface StepResult {
   readonly status: "pass" | "fail" | "skipped"
   readonly durationMs: number
   readonly error?: string
+  /**
+   * Optional machine-readable error code, populated when the step fails with a
+   * {@link StepError}. Rendered as `[CODE] message` in user-facing output so
+   * users can look up the failure in docs; absent for generic `Error` failures.
+   */
+  readonly code?: string
   readonly output?: Record<string, unknown>
 }
 
@@ -199,11 +206,17 @@ const runOneStep = Effect.fn("Pipeline.runOneStep")(function* <R>(
     }
     return result
   }
+  // Preserve StepError's `code` so the renderer can surface documented
+  // failure codes (e.g. PREFLIGHT_MISSING_SECRETS → docs section). For plain
+  // Errors and arbitrary thrown values the code is omitted and the renderer
+  // falls back to `Error: <message>`.
+  const err = either.left
   const result: StepResult = {
     name: step.name,
     status: "fail",
     durationMs,
-    error: either.left instanceof Error ? either.left.message : String(either.left),
+    error: err instanceof Error ? err.message : String(err),
+    ...(err instanceof StepError ? { code: err.code } : {}),
   }
   return result
 })

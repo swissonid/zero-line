@@ -31,4 +31,42 @@ describe("Renderer", () => {
     expect(out).not.toContain("(0ms)")
     expect(out).toContain("skipped-step")
   })
+
+  test("renders StepError code alongside message when a step fails with a code", () => {
+    const output = renderResults([
+      {
+        name: "preflight",
+        status: "fail",
+        durationMs: 12,
+        error: "Missing required secrets:\n  - APPLE_API_KEY (required by step 'sign')",
+        code: "PREFLIGHT_MISSING_SECRETS",
+      },
+    ])
+    expect(output).toContain("[PREFLIGHT_MISSING_SECRETS]")
+    expect(output).toContain("Missing required secrets")
+    expect(output).toContain("APPLE_API_KEY")
+  })
+
+  test("renders failures without code as plain Error: <message>", () => {
+    const out = renderStepResult({
+      name: "generic",
+      status: "fail",
+      durationMs: 7,
+      error: "oops",
+    })
+    expect(out).toContain("Error: oops")
+    // No bracketed code prefix when `code` is not set on the result.
+    expect(out).not.toContain("Error: [")
+  })
+
+  test("renderStepResult prefixes error with [CODE] when code is set", () => {
+    const out = renderStepResult({
+      name: "sign",
+      status: "fail",
+      durationMs: 12,
+      error: "no profile",
+      code: "SIGN_FAILED",
+    })
+    expect(out).toContain("Error: [SIGN_FAILED] no profile")
+  })
 })

@@ -112,9 +112,11 @@ describe("LocalShell", () => {
 
     const start = Date.now()
     const fiber = Effect.runFork(Effect.provide(program, LocalShellLive))
-    // give it a moment to start, then interrupt and wait for the fiber to
-    // settle. `Fiber.interrupt` returns an Effect that awaits interruption;
-    // we run it to ensure the finalizer (SIGTERM) has fired before we assert.
+    // 100 ms is a heuristic: gives the Bun subprocess time to reach the kernel
+    // `sleep` syscall and for the Effect finalizer to register before we
+    // interrupt. On very slow hosts this may need to be increased. A fully
+    // robust version would pipe a ready-signal out of the subprocess, but
+    // that adds stream-handling complexity for a test-only concern.
     await new Promise((r) => setTimeout(r, 100))
     const exit = await Effect.runPromise(Fiber.interrupt(fiber))
     const elapsed = Date.now() - start

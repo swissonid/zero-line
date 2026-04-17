@@ -127,10 +127,13 @@ function spawnEffect(
         if (settled) return
         settled = true
         proc.kill("SIGTERM")
-        killEscalationHandle = setTimeout(
-          () => proc.kill("SIGKILL"),
-          SIGTERM_GRACE_MS
-        )
+        killEscalationHandle = setTimeout(() => {
+          try {
+            proc.kill("SIGKILL")
+          } catch {
+            // process already exited / reaped (ESRCH) — nothing to do
+          }
+        }, SIGTERM_GRACE_MS)
         resume(
           Effect.fail(
             new ShellError({
@@ -149,10 +152,13 @@ function spawnEffect(
       if (!settled) {
         settled = true
         proc.kill("SIGTERM")
-        killEscalationHandle = setTimeout(
-          () => proc.kill("SIGKILL"),
-          SIGTERM_GRACE_MS
-        )
+        killEscalationHandle = setTimeout(() => {
+          try {
+            proc.kill("SIGKILL")
+          } catch {
+            // process already exited / reaped (ESRCH) — nothing to do
+          }
+        }, SIGTERM_GRACE_MS)
       }
       if (timeoutHandle) clearTimeout(timeoutHandle)
     })

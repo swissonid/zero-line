@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect"
+import { existsSync } from "fs"
 import { join } from "path"
 import { ConfigService, ConfigLoadError, SecretNotFoundError } from "../ports/ConfigService"
 import { validateConfig } from "../config/validateConfig"
@@ -9,13 +10,14 @@ export function makeFileConfigLayer(projectDir: string) {
       Effect.tryPromise({
         try: async () => {
           const configPath = join(projectDir, "zl.config.ts")
+          if (!existsSync(configPath)) {
+            throw new Error(`No zl.config.ts found in ${projectDir}`)
+          }
           const mod = await import(configPath)
           return validateConfig(mod.default ?? mod)
         },
         catch: (err) =>
-          new ConfigLoadError(
-            `Failed to load zl.config.ts: ${err instanceof Error ? err.message : String(err)}`
-          ),
+          new ConfigLoadError(err instanceof Error ? err.message : String(err)),
       }),
 
     env: (key: string) => Effect.succeed(process.env[key]),

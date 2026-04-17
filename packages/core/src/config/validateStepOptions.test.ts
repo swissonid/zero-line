@@ -1,7 +1,6 @@
 import { describe, test, expect } from "bun:test"
 import { Effect, Exit } from "effect"
 import { validateStepOptions } from "./validateStepOptions"
-import { ConfigValidationError } from "./validateConfig"
 import type { ZlConfig } from "./ConfigTypes"
 
 const goodPlugin = {

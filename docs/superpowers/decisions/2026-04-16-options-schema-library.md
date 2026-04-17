@@ -5,12 +5,42 @@
 
 ## Decision
 
-We use `effect/Schema` (from the `effect` package we already depend on) for plugin options schemas.
+Two-part decision:
 
-## Considered
+1. **`optionsSchema` is schema-agnostic.** It accepts any object with a `decode(raw: unknown) => T` method — not a specific library type. Plugin authors may use `effect/Schema`, `zod`, `valibot`, `arktype`, or a hand-written validator.
+2. **`effect/Schema` is the recommended default.** Zero extra dependencies, first-class integration with the Effect pipeline, and better error output for the nested-struct shapes steps tend to have (see spike below).
+
+Rationale for the split: locking the core to a single schema library would force every plugin author onto it; keeping the interface narrow (one `decode` method) costs nothing and preserves choice. The library choice therefore only governs what `@zl/core` and the first-party plugins ship against — which is `effect/Schema`.
+
+## Interface (v1.0)
+
+```ts
+interface OptionsSchema<T> {
+  decode: (raw: unknown) => T;
+}
+```
+
+`decode` returns the parsed value on success or throws on failure. `ConfigLoader` calls `schema.decode(rawOptions)` at config-load time and wraps any thrown error as `StepError` with code `OPTIONS_VALIDATION_FAILED`.
+
+Usage across libraries:
+
+```ts
+// effect/Schema (recommended — zero extra deps)
+optionsSchema: { decode: (raw) => Schema.decodeUnknownSync(MySchema)(raw) }
+
+// zod
+optionsSchema: { decode: (raw) => MyZodSchema.parse(raw) }
+
+// valibot, arktype, hand-written, etc.
+optionsSchema: { decode: (raw) => myValidator(raw) }
+```
+
+## Considered (for the default)
 
 - `effect/Schema` — zero new deps; composes with Effect; `Schema.decodeUnknownEither` / `Schema.decodeUnknown` integrate cleanly with `Effect.Effect<_, StepError>`.
 - `zod` — broader ecosystem familiarity; friendlier default errors; would add a runtime dependency.
+
+The interface decision above means this is a *default* choice, not an exclusion of zod — plugin authors can still pick it via the `decode` function.
 
 ## Spike Output
 
@@ -41,7 +71,7 @@ Given an invalid input `{ scheme: "App", configuration: "Invalid", extraField: t
 }
 ```
 
-## Rationale
+## Rationale for `effect/Schema` as the default
 
 **Error message quality:** effect/Schema produces a tree-formatted message that renders the full schema shape at the root, then narrows down the failing field path (`["configuration"]`) with a branching display of each expected literal and the actual value received. For deeply nested step configs this will be immediately readable in terminal output. Zod v4 produces a compact structured array with `code`, `values`, `path`, and `message` — machine-parseable and clean, but slightly less scannable at a glance.
 
@@ -53,29 +83,7 @@ Given an invalid input `{ scheme: "App", configuration: "Invalid", extraField: t
 
 **Dependency footprint:** effect/Schema ships as part of the `effect` package already present in `@zl/core`. Adding zod would be a new runtime dependency across all plugin packages.
 
-No deal-breaking DX issues were observed with effect/Schema. The error output is more informative than zod's for the nested-struct use-case, and integration is a first-class story.
-
-## Schema-agnostic port (v1.0)
-
-While `effect/Schema` is the recommended default, the `optionsSchema` field on `defineStep` accepts **any object with a `decode` function** — not just `Schema.Schema`. This lets plugin authors use zod, valibot, arktype, or any other library:
-
-```ts
-// effect/Schema (recommended — zero extra deps)
-optionsSchema: { decode: (raw) => Schema.decodeUnknownSync(MySchema)(raw) }
-
-// zod
-optionsSchema: { decode: (raw) => MyZodSchema.parse(raw) }
-
-// valibot, arktype, etc.
-optionsSchema: { decode: (raw) => myValidator(raw) }
-```
-
-The interface is simply:
-```ts
-interface OptionsSchema<T> { decode: (raw: unknown) => T }
-```
-
-`decode` returns the parsed value on success or throws on failure. `ConfigLoader` catches the throw and wraps it in a `StepError` with code `OPTIONS_VALIDATION_FAILED`.
+No deal-breaking DX issues were observed with effect/Schema. The error output is more informative than zod's for the nested-struct use-case, and integration is a first-class story — so it wins as the default the first-party code ships against.
 
 ## End-to-end type safety (v1.1 goal)
 
@@ -85,6 +93,7 @@ v1.1 will explore deeper integration (e.g. Standard Schema's `~standard.types.ou
 
 ## Consequences
 
-- v1.0: plugins declare `optionsSchema: { decode: (raw: unknown) => TOpts }` using any library. `effect/Schema` is the recommended default.
+- v1.0 interface: plugins declare `optionsSchema: { decode: (raw: unknown) => TOpts }` using any library of their choice.
+- `effect/Schema` is the recommended default and what `@zl/core` and first-party plugins ship against — no new runtime dependencies.
 - `ConfigLoader` calls `schema.decode(rawOptions)` at config-load time; throws are caught as `OPTIONS_VALIDATION_FAILED`.
 - v1.1: revisit for full end-to-end type inference from schema to `opts` parameter.

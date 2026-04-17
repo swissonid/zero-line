@@ -27,7 +27,7 @@ const stubConfig = (
   secret: (k) =>
     k in secrets
       ? Effect.succeed(secrets[k]!)
-      : Effect.fail(new SecretNotFoundError(k)),
+      : Effect.fail(new SecretNotFoundError({ key: k })),
 })
 
 const stubPlatform = (toolchains: ReadonlyArray<string>): IPlatformService => ({

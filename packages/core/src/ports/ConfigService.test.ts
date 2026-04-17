@@ -28,13 +28,13 @@ describe("ConfigService", () => {
   })
 
   test("ConfigLoadError carries a message and _tag", () => {
-    const err = new ConfigLoadError("broken")
+    const err = new ConfigLoadError({ message: "broken" })
     expect(err.message).toBe("broken")
     expect(err._tag).toBe("ConfigLoadError")
   })
 
   test("SecretNotFoundError carries a key and _tag", () => {
-    const err = new SecretNotFoundError("API_KEY")
+    const err = new SecretNotFoundError({ key: "API_KEY" })
     expect(err.key).toBe("API_KEY")
     expect(err._tag).toBe("SecretNotFoundError")
   })

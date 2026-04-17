@@ -18,7 +18,9 @@ export function makeFileConfigLayer(projectDir: string) {
           return validateConfig(unwrapDefaultExport(mod))
         },
         catch: (err) =>
-          new ConfigLoadError(err instanceof Error ? err.message : String(err)),
+          new ConfigLoadError({
+            message: err instanceof Error ? err.message : String(err),
+          }),
       }),
 
     env: (key: string) => Effect.succeed(process.env[key]),
@@ -27,7 +29,9 @@ export function makeFileConfigLayer(projectDir: string) {
     // with ZER-122 (M-A2 Task 5 — SecretStore wiring).
     secret: (key: string) =>
       Effect.fromNullable(process.env[key]).pipe(
-        Effect.mapError(() => new SecretNotFoundError(key))
+        Effect.mapError(
+          () => new SecretNotFoundError({ key, message: `Secret not found: ${key}` })
+        )
       ),
   })
 }

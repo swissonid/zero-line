@@ -121,7 +121,7 @@ describe("FileConfig", () => {
   })
 
   test("ConfigLoadError constructs with a message", () => {
-    const err = new ConfigLoadError("boom")
+    const err = new ConfigLoadError({ message: "boom" })
     expect(err.message).toBe("boom")
     expect(err._tag).toBe("ConfigLoadError")
   })

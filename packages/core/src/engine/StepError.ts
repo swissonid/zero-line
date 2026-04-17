@@ -27,6 +27,7 @@ export class StepError extends Error {
       code: this.code,
       message: this.message,
       name: this.name,
+      ...(this.cause !== undefined ? { cause: this.cause } : {}),
     }
   }
 }

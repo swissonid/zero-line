@@ -35,7 +35,7 @@ import {
 } from "../step-loader/StepRequirements"
 import { StepError } from "./StepError"
 import { ConfigService } from "../ports/ConfigService"
-import { PlatformService, type Toolchain } from "../ports/PlatformService"
+import { PlatformService } from "../ports/PlatformService"
 
 function formatMissing(entries: ReadonlyArray<RequirementEntry>): string {
   return entries
@@ -62,13 +62,14 @@ export function preflightCheck(
     const config = yield* ConfigService
     const platform = yield* PlatformService
 
-    // Secrets: probe each via ConfigService.secret; SecretNotFoundError →
-    // missing. Collect all before failing so the step author sees every
-    // missing secret in one pass.
+    // Secrets: probe each via ConfigService.secret; only the typed
+    // SecretNotFoundError failure channel counts as "missing". Effect.either
+    // keeps defects (infra crashes, network timeouts) propagating as defects
+    // instead of silently misreporting them as missing secrets.
     const missingSecrets: RequirementEntry[] = []
     for (const entry of requirements.secrets) {
-      const exit = yield* Effect.exit(config.secret(entry.key))
-      if (exit._tag === "Failure") missingSecrets.push(entry)
+      const either = yield* Effect.either(config.secret(entry.key))
+      if (either._tag === "Left") missingSecrets.push(entry)
     }
     if (missingSecrets.length > 0) {
       return yield* Effect.fail(
@@ -85,7 +86,7 @@ export function preflightCheck(
     const availableToolchains = yield* platform.availableToolchains()
     const available: ReadonlySet<string> = new Set(availableToolchains)
     const missingToolchains = requirements.toolchains.filter(
-      (t) => !available.has(t.key as Toolchain)
+      (t) => !available.has(t.key)
     )
     if (missingToolchains.length > 0) {
       return yield* Effect.fail(

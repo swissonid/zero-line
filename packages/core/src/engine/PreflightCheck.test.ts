@@ -78,8 +78,8 @@ describe("preflightCheck", () => {
     expect(text).toContain("PREFLIGHT_MISSING_SECRETS")
     expect(text).toContain("MISSING_1")
     expect(text).toContain("MISSING_2")
-    expect(text).toContain("a")
-    expect(text).toContain("b")
+    expect(text).toContain("step 'a'")
+    expect(text).toContain("step 'b'")
   })
 
   test("fails with PREFLIGHT_MISSING_TOOLCHAINS when toolchain absent", async () => {

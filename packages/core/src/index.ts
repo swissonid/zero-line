@@ -19,7 +19,17 @@ export {
 
 // Config
 export { defineConfig, type ZlConfig, type Platform, type StepInstance } from "./config/ConfigTypes"
-export { loadConfig, ConfigFileNotFoundError, ConfigValidationError } from "./config/ConfigLoader"
+export { ConfigValidationError } from "./config/validateConfig"
+export {
+  validateStepOptions,
+  type PluginLike,
+  type PluginLoader as OptionsPluginLoader,
+} from "./config/validateStepOptions"
+export {
+  resolveStepInstances,
+  defaultPluginLoader,
+  type PluginLoader,
+} from "./step-loader/StepInstanceResolver"
 
 // Engine
 export { definePipeline, DefaultRuntimeLayer, type Pipeline, type StepResult, type PipelineConfig } from "./engine/Pipeline"

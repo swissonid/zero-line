@@ -126,7 +126,11 @@ function spawnEffect(
       timeoutHandle = setTimeout(() => {
         if (settled) return
         settled = true
-        proc.kill("SIGTERM")
+        try {
+          proc.kill("SIGTERM")
+        } catch {
+          // process already exited / reaped (ESRCH) — nothing to do
+        }
         killEscalationHandle = setTimeout(() => {
           try {
             proc.kill("SIGKILL")
@@ -151,7 +155,11 @@ function spawnEffect(
     return Effect.sync(() => {
       if (!settled) {
         settled = true
-        proc.kill("SIGTERM")
+        try {
+          proc.kill("SIGTERM")
+        } catch {
+          // process already exited / reaped (ESRCH) — nothing to do
+        }
         killEscalationHandle = setTimeout(() => {
           try {
             proc.kill("SIGKILL")

@@ -16,6 +16,8 @@ import {
  * forward it untouched.
  */
 async function runOnce(opts: ShellSpawnOptions): Promise<ShellResult> {
+  // NOTE: opts.timeoutMs is intentionally ignored here; cancellation/timeout
+  // is deferred to Task 8 of the M-A1 core-hardening plan (ZER-109).
   const [command, ...args] = opts.argv
   if (!command) {
     throw new ShellError({
@@ -76,7 +78,9 @@ export const LocalShellLive = Layer.succeed(ShellService, {
           : Effect.fail(
               new ShellError({
                 code: "NON_ZERO_EXIT",
-                message: `Command '${opts.argv.join(" ")}' exited with ${result.exitCode}`,
+                message:
+                  `Command '${opts.argv.join(" ")}' exited with ${result.exitCode}` +
+                  (result.stderr ? `\nstderr: ${result.stderr}` : ""),
                 exitCode: result.exitCode,
               })
             )

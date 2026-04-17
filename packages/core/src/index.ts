@@ -21,7 +21,7 @@ export { definePipeline, DefaultRuntimeLayer, type Pipeline, type StepResult, ty
 export { buildExecutionOrder, CyclicDependencyError } from "./engine/DependencyGraph"
 
 // Ports (re-export from subpath)
-export { LoggerService, ConfigService, PlatformService, ArtifactService, ShellService } from "./ports/index"
+export { LoggerService, ConfigService, PlatformService, ArtifactService, ShellService, ShellError } from "./ports/index"
 
 // Adapters
 export { ConsoleLoggerLive } from "./adapters/ConsoleLogger"

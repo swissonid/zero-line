@@ -1,10 +1,11 @@
 import { describe, test, expect } from "bun:test"
-import { defineStep } from "./StepContract"
+import { Effect } from "effect"
+import { defineStep, defineEffectStep } from "./StepContract"
 import { gatherRequirements } from "./StepRequirements"
-import type { ResolvedStep } from "./StepContract"
+import type { PluginStep, ResolvedStep } from "./StepContract"
 
 const toResolved = (
-  plugin: ReturnType<typeof defineStep>,
+  plugin: PluginStep,
   options: Record<string, unknown> = {}
 ): ResolvedStep => ({
   plugin,
@@ -46,5 +47,31 @@ describe("gatherRequirements", () => {
     const resolved = toResolved(step, { teamId: "XYZ" })
     const reqs = gatherRequirements([resolved])
     expect(reqs.secrets).toEqual([{ stepName: "sign", key: "APPLE_API_KEY_XYZ" }])
+  })
+
+  test("returns empty lists for an empty pipeline", () => {
+    expect(gatherRequirements([])).toEqual({
+      secrets: [],
+      toolchains: [],
+      env: [],
+    })
+  })
+
+  test("handles EffectPluginStep alongside SimplePluginStep", () => {
+    const simple = defineStep({
+      name: "build-ios",
+      requiredSecrets: ["APPLE_API_KEY"],
+      run: async () => ({}),
+    })
+    const effect = defineEffectStep({
+      name: "build-android",
+      requiredToolchains: ["gradle"],
+      requiredEnv: ["ANDROID_HOME"],
+      run: () => Effect.succeed({}),
+    })
+    const reqs = gatherRequirements([toResolved(simple), toResolved(effect)])
+    expect(reqs.secrets).toEqual([{ stepName: "build-ios", key: "APPLE_API_KEY" }])
+    expect(reqs.toolchains).toEqual([{ stepName: "build-android", key: "gradle" }])
+    expect(reqs.env).toEqual([{ stepName: "build-android", key: "ANDROID_HOME" }])
   })
 })

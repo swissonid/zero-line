@@ -42,6 +42,7 @@ export { LoggerService, ConfigService, PlatformService, ArtifactService, ShellSe
 // Adapters
 export { ConsoleLoggerLive } from "./adapters/ConsoleLogger"
 export { makeFileConfigLayer } from "./adapters/FileConfig"
+export { LocalEnvConfigLive } from "./adapters/LocalEnvConfig"
 export { LocalPlatformLive } from "./adapters/LocalPlatform"
 export { MemoryArtifactStoreLive } from "./adapters/MemoryArtifactStore"
 export { LocalShellLive } from "./adapters/LocalShell"

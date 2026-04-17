@@ -30,6 +30,7 @@ export {
   defaultPluginLoader,
   type PluginLoader,
 } from "./step-loader/StepInstanceResolver"
+export { unwrapDefaultExport } from "./step-loader/unwrapDefaultExport"
 
 // Engine
 export { definePipeline, DefaultRuntimeLayer, type Pipeline, type StepResult, type PipelineConfig } from "./engine/Pipeline"

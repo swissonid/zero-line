@@ -3,6 +3,7 @@ import { existsSync } from "fs"
 import { join } from "path"
 import { ConfigService, ConfigLoadError, SecretNotFoundError } from "../ports/ConfigService"
 import { validateConfig } from "../config/validateConfig"
+import { unwrapDefaultExport } from "../step-loader/unwrapDefaultExport"
 
 export function makeFileConfigLayer(projectDir: string) {
   return Layer.succeed(ConfigService, {
@@ -14,7 +15,7 @@ export function makeFileConfigLayer(projectDir: string) {
             throw new Error(`No zl.config.ts found in ${projectDir}`)
           }
           const mod = await import(configPath)
-          return validateConfig(mod.default ?? mod)
+          return validateConfig(unwrapDefaultExport(mod))
         },
         catch: (err) =>
           new ConfigLoadError(err instanceof Error ? err.message : String(err)),

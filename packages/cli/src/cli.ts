@@ -3,9 +3,11 @@ import {
   ConfigService,
   makeFileConfigLayer,
   resolveStepInstances,
+  unwrapDefaultExport,
   validateStepOptions,
   type Platform,
   type OptionsPluginLoader,
+  type PluginLike,
   type ZlConfig,
 } from "@zl/core"
 import { runWorkflow } from "./commands/run"
@@ -82,11 +84,12 @@ function collectInstances(config: ZlConfig, platform: Platform | undefined) {
 
 // Load a plugin for validateStepOptions by importing its package and
 // returning the default/namespace export. `null` means "not installed" —
-// options validation is skipped for that step instance.
+// options validation is skipped for that step instance. `unwrapDefaultExport`
+// handles the `mod.default ?? mod` fallback with a Schema-guarded boundary
+// (see @zl/core) so there's no `as Record<string, unknown>` cast here.
 const pluginLookup: OptionsPluginLoader = async (name) => {
   try {
-    const mod = (await import(name)) as Record<string, unknown>
-    return (mod.default ?? mod) as { optionsSchema?: { decode: (raw: unknown) => unknown } }
+    return unwrapDefaultExport(await import(name)) as PluginLike
   } catch {
     return null
   }

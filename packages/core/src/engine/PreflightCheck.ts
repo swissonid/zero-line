@@ -48,69 +48,70 @@ function formatMissing(entries: ReadonlyArray<RequirementEntry>): string {
  * environment. Succeeds with `void` if all requirements are present;
  * otherwise fails with a {@link StepError} describing the missing items.
  *
+ * Wrapped with {@link Effect.fn} so every invocation creates a `preflightCheck`
+ * span (call-site captured for better Cause stack traces).
+ *
  * @param steps - Workflow-resolved steps, in execution order. Function-valued
  *   requirements are evaluated against each step's bound options.
  * @returns An Effect that requires {@link ConfigService} and
  *   {@link PlatformService} and fails with {@link StepError} on any missing
  *   requirement.
  */
-export function preflightCheck(
+export const preflightCheck = Effect.fn("preflightCheck")(function* (
   steps: ReadonlyArray<ResolvedStep>
-): Effect.Effect<void, StepError, ConfigService | PlatformService> {
-  return Effect.gen(function* () {
-    const requirements = gatherRequirements(steps)
-    const config = yield* ConfigService
-    const platform = yield* PlatformService
+) {
+  const requirements = gatherRequirements(steps)
+  const config = yield* ConfigService
+  const platform = yield* PlatformService
 
-    // Secrets: probe each via ConfigService.secret; only the typed
-    // SecretNotFoundError failure channel counts as "missing". Effect.either
-    // keeps defects (infra crashes, network timeouts) propagating as defects
-    // instead of silently misreporting them as missing secrets.
-    const missingSecrets: RequirementEntry[] = []
-    for (const entry of requirements.secrets) {
-      const either = yield* Effect.either(config.secret(entry.key))
-      if (either._tag === "Left") missingSecrets.push(entry)
-    }
-    if (missingSecrets.length > 0) {
-      return yield* Effect.fail(
-        new StepError({
-          code: "PREFLIGHT_MISSING_SECRETS",
-          message: `Missing required secrets:\n${formatMissing(missingSecrets)}`,
-        })
-      )
-    }
-
-    // Toolchains: single batched query against PlatformService, then set
-    // membership against declared entries. Preserves declaration order in
-    // error output.
-    const availableToolchains = yield* platform.availableToolchains()
-    const available: ReadonlySet<string> = new Set(availableToolchains)
-    const missingToolchains = requirements.toolchains.filter(
-      (t) => !available.has(t.key)
+  // Secrets: probe each via ConfigService.secret; only the typed
+  // SecretNotFoundError failure channel counts as "missing". Effect.either
+  // keeps defects (infra crashes, network timeouts) propagating as defects
+  // instead of silently misreporting them as missing secrets.
+  const missingSecrets: RequirementEntry[] = []
+  for (const entry of requirements.secrets) {
+    const either = yield* Effect.either(config.secret(entry.key))
+    if (either._tag === "Left") missingSecrets.push(entry)
+  }
+  if (missingSecrets.length > 0) {
+    return yield* Effect.fail(
+      new StepError({
+        code: "PREFLIGHT_MISSING_SECRETS",
+        message: `Missing required secrets:\n${formatMissing(missingSecrets)}`,
+      })
     )
-    if (missingToolchains.length > 0) {
-      return yield* Effect.fail(
-        new StepError({
-          code: "PREFLIGHT_MISSING_TOOLCHAINS",
-          message: `Missing required toolchains:\n${formatMissing(missingToolchains)}`,
-        })
-      )
-    }
+  }
 
-    // Env vars: `ConfigService.env` returns `string | undefined` (never
-    // fails), so absence is `undefined`, not a typed error.
-    const missingEnv: RequirementEntry[] = []
-    for (const entry of requirements.env) {
-      const value = yield* config.env(entry.key)
-      if (value === undefined) missingEnv.push(entry)
-    }
-    if (missingEnv.length > 0) {
-      return yield* Effect.fail(
-        new StepError({
-          code: "PREFLIGHT_MISSING_ENV",
-          message: `Missing required env vars:\n${formatMissing(missingEnv)}`,
-        })
-      )
-    }
-  })
-}
+  // Toolchains: single batched query against PlatformService, then set
+  // membership against declared entries. Preserves declaration order in
+  // error output.
+  const availableToolchains = yield* platform.availableToolchains()
+  const available: ReadonlySet<string> = new Set(availableToolchains)
+  const missingToolchains = requirements.toolchains.filter(
+    (t) => !available.has(t.key)
+  )
+  if (missingToolchains.length > 0) {
+    return yield* Effect.fail(
+      new StepError({
+        code: "PREFLIGHT_MISSING_TOOLCHAINS",
+        message: `Missing required toolchains:\n${formatMissing(missingToolchains)}`,
+      })
+    )
+  }
+
+  // Env vars: `ConfigService.env` returns `string | undefined` (never
+  // fails), so absence is `undefined`, not a typed error.
+  const missingEnv: RequirementEntry[] = []
+  for (const entry of requirements.env) {
+    const value = yield* config.env(entry.key)
+    if (value === undefined) missingEnv.push(entry)
+  }
+  if (missingEnv.length > 0) {
+    return yield* Effect.fail(
+      new StepError({
+        code: "PREFLIGHT_MISSING_ENV",
+        message: `Missing required env vars:\n${formatMissing(missingEnv)}`,
+      })
+    )
+  }
+})

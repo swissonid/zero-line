@@ -28,29 +28,27 @@ type LabeledInstance = { readonly inst: StepInstance; readonly source: string }
  * line. {@link validateStepOptions} collects every issue across all
  * instances via `Effect.validateAll` before rejecting.
  */
-function validateOne(
+const validateOne = Effect.fn("validateStepOptions.validateOne")(function* (
   { inst, source }: LabeledInstance,
   loader: PluginLoader
-): Effect.Effect<void, string, never> {
-  return Effect.gen(function* () {
-    const plugin = yield* Effect.tryPromise({
-      try: () => loader(inst.name),
-      catch: (cause) =>
-        `Plugin loader failed for step '${inst.name}' (${source}): ${
-          cause instanceof Error ? cause.message : String(cause)
-        }`,
-    })
-    if (!plugin || !plugin.optionsSchema) return
-    try {
-      plugin.optionsSchema.decode(inst.options)
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err)
-      return yield* Effect.fail(
-        `Invalid options for step '${inst.name}' (${source}): ${reason}`
-      )
-    }
+) {
+  const plugin = yield* Effect.tryPromise({
+    try: () => loader(inst.name),
+    catch: (cause) =>
+      `Plugin loader failed for step '${inst.name}' (${source}): ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
   })
-}
+  if (!plugin || !plugin.optionsSchema) return
+  try {
+    plugin.optionsSchema.decode(inst.options)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    return yield* Effect.fail(
+      `Invalid options for step '${inst.name}' (${source}): ${reason}`
+    )
+  }
+})
 
 /**
  * Walk every {@link StepInstance} in `config` (top-level `steps` + every

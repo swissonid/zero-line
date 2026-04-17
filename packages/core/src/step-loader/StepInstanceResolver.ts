@@ -43,42 +43,41 @@ export const defaultPluginLoader: PluginLoader = async (name: string) => {
   return unwrapDefaultExport(await import(name))
 }
 
-function resolveOne(
+const resolveOne = Effect.fn("resolveStepInstances.resolveOne")(function* (
   instance: StepInstance,
   loader: PluginLoader
-): Effect.Effect<ResolvedStep, StepError, never> {
-  return Effect.gen(function* () {
-    const raw = yield* Effect.tryPromise({
-      try: () => loader(instance.name),
-      catch: (cause) =>
-        new StepError({
-          code: "STEP_NOT_FOUND",
-          message: `Failed to load step plugin '${instance.name}'`,
-          cause,
-        }),
-    })
-
-    const validation = validateStep(raw)
-    if (!validation.valid) {
-      return yield* Effect.fail(
-        new StepError({
-          code: "INVALID_PLUGIN",
-          message: `Plugin '${instance.name}' is not a valid step: ${
-            validation.error ?? "unknown"
-          }`,
-        })
-      )
-    }
-
-    const plugin = raw as PluginStep
-    return {
-      plugin,
-      name: instance.name,
-      dependsOnSteps: plugin.dependsOnSteps,
-      options: instance.options,
-    }
+) {
+  const raw = yield* Effect.tryPromise({
+    try: () => loader(instance.name),
+    catch: (cause) =>
+      new StepError({
+        code: "STEP_NOT_FOUND",
+        message: `Failed to load step plugin '${instance.name}'`,
+        cause,
+      }),
   })
-}
+
+  const validation = validateStep(raw)
+  if (!validation.valid) {
+    return yield* Effect.fail(
+      new StepError({
+        code: "INVALID_PLUGIN",
+        message: `Plugin '${instance.name}' is not a valid step: ${
+          validation.error ?? "unknown"
+        }`,
+      })
+    )
+  }
+
+  const plugin = raw as PluginStep
+  const resolved: ResolvedStep = {
+    plugin,
+    name: instance.name,
+    dependsOnSteps: plugin.dependsOnSteps,
+    options: instance.options,
+  }
+  return resolved
+})
 
 /**
  * Resolve a workflow's {@link StepInstance} list into {@link ResolvedStep}s.
@@ -100,12 +99,14 @@ function resolveOne(
  * (validateStepOptions, or the step's `execute`/`run` at runtime) — this
  * resolver only pairs instances with plugins.
  */
-export function resolveStepInstances(
-  instances: ReadonlyArray<StepInstance>,
-  loader: PluginLoader = defaultPluginLoader
-): Effect.Effect<ReadonlyArray<ResolvedStep>, StepError, never> {
-  return Effect.all(
-    instances.map((instance) => resolveOne(instance, loader)),
-    { concurrency: "unbounded" }
-  )
-}
+export const resolveStepInstances = Effect.fn("resolveStepInstances")(
+  function* (
+    instances: ReadonlyArray<StepInstance>,
+    loader: PluginLoader = defaultPluginLoader
+  ) {
+    return yield* Effect.all(
+      instances.map((instance) => resolveOne(instance, loader)),
+      { concurrency: "unbounded" }
+    )
+  }
+)

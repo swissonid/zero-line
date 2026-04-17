@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Fiber } from "effect"
 import { ShellService } from "../ports/ShellService"
 import { LocalShellLive } from "./LocalShell"
 
@@ -102,5 +102,38 @@ describe("LocalShell", () => {
     )
     expect(result.exitCode).toBe(0)
     expect(result.stdout.trim()).toBe("zl-value-42")
+  })
+
+  test("honours Effect.interrupt by killing the subprocess (SIGTERM)", async () => {
+    const program = Effect.gen(function* () {
+      const sh = yield* ShellService
+      return yield* sh.spawn({ argv: ["sleep", "10"] })
+    })
+
+    const start = Date.now()
+    const fiber = Effect.runFork(Effect.provide(program, LocalShellLive))
+    // give it a moment to start, then interrupt and wait for the fiber to
+    // settle. `Fiber.interrupt` returns an Effect that awaits interruption;
+    // we run it to ensure the finalizer (SIGTERM) has fired before we assert.
+    await new Promise((r) => setTimeout(r, 100))
+    const exit = await Effect.runPromise(Fiber.interrupt(fiber))
+    const elapsed = Date.now() - start
+    // exit should come quickly (under 2s), not wait for sleep 10 to finish
+    expect(exit._tag).toBe("Failure")
+    expect(elapsed).toBeLessThan(2000)
+  })
+
+  test("times out after timeoutMs with structured error", async () => {
+    const exit = await Effect.runPromiseExit(
+      Effect.provide(
+        Effect.gen(function* () {
+          const sh = yield* ShellService
+          return yield* sh.spawn({ argv: ["sleep", "5"], timeoutMs: 250 })
+        }),
+        LocalShellLive
+      )
+    )
+    expect(exit._tag).toBe("Failure")
+    expect(JSON.stringify(exit)).toContain("TIMEOUT")
   })
 })

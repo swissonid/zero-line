@@ -1,7 +1,19 @@
 import { describe, test, expect } from "bun:test"
-import { Effect, Exit } from "effect"
+import { Cause, Effect, Exit, Option } from "effect"
 import { validateStepOptions } from "./validateStepOptions"
+import { ConfigValidationError } from "./validateConfig"
 import type { ZlConfig } from "./ConfigTypes"
+
+function expectValidationError(
+  exit: Exit.Exit<unknown, unknown>
+): ConfigValidationError {
+  if (!Exit.isFailure(exit)) throw new Error("expected Exit.Failure")
+  const maybe = Cause.failureOption(exit.cause)
+  if (Option.isNone(maybe)) throw new Error("expected typed failure, got defect")
+  const err = maybe.value
+  expect(err).toBeInstanceOf(ConfigValidationError)
+  return err as ConfigValidationError
+}
 
 const goodPlugin = {
   optionsSchema: {
@@ -39,11 +51,11 @@ describe("validateStepOptions", () => {
     }
     const loader = async () => goodPlugin
     const exit = await Effect.runPromiseExit(validateStepOptions(config, loader))
-    expect(Exit.isFailure(exit)).toBe(true)
-    const json = JSON.stringify(exit)
-    expect(json).toContain("top-level")
-    expect(json).toContain("platform: ios")
-    expect(json).toContain("build")
+    const err = expectValidationError(exit)
+    expect(err.issues).toHaveLength(2)
+    expect(err.issues.some((i) => i.includes("top-level"))).toBe(true)
+    expect(err.issues.some((i) => i.includes("platform: ios"))).toBe(true)
+    expect(err.issues.every((i) => i.includes("build"))).toBe(true)
   })
 
   test("fails with a typed ConfigValidationError", async () => {
@@ -53,10 +65,7 @@ describe("validateStepOptions", () => {
     }
     const loader = async () => goodPlugin
     const exit = await Effect.runPromiseExit(validateStepOptions(config, loader))
-    expect(Exit.isFailure(exit)).toBe(true)
-    if (!Exit.isFailure(exit)) throw new Error("expected failure")
-    const cause = exit.cause
-    expect(JSON.stringify(cause)).toContain("ConfigValidationError")
+    expectValidationError(exit)
   })
 
   test("skips steps whose loader returns null", async () => {
@@ -88,9 +97,9 @@ describe("validateStepOptions", () => {
       throw new Error("boom")
     }
     const exit = await Effect.runPromiseExit(validateStepOptions(config, loader))
-    expect(Exit.isFailure(exit)).toBe(true)
-    const json = JSON.stringify(exit)
-    expect(json).toContain("Plugin loader failed for step 'explodes'")
-    expect(json).toContain("boom")
+    const err = expectValidationError(exit)
+    expect(err.issues).toHaveLength(1)
+    expect(err.issues[0]).toContain("Plugin loader failed for step 'explodes'")
+    expect(err.issues[0]).toContain("boom")
   })
 })

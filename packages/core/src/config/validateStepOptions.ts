@@ -42,7 +42,7 @@ function validateOne(
     })
     if (!plugin || !plugin.optionsSchema) return
     try {
-      plugin.optionsSchema.decode(inst.options ?? {})
+      plugin.optionsSchema.decode(inst.options)
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
       return yield* Effect.fail(

@@ -123,18 +123,11 @@ export async function runCli(
     // Task 12 (ZER-112) will change Pipeline to accept ResolvedStep[] and
     // thread bound options through. Until then we pass the plugin steps in
     // the pre-existing Pipeline shape.
-    // Effect.tryPromise (not Effect.promise) so any runWorkflow rejection
-    // is a typed failure that catchAll at the bottom can handle, rather
-    // than a defect that bypasses it.
-    const success = yield* Effect.tryPromise({
-      try: () =>
-        runWorkflow({
-          workflowName: parsed.workflowName,
-          config,
-          steps: resolved.map((r) => r.plugin) as any,
-          io,
-        }),
-      catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+    const success = yield* runWorkflow({
+      workflowName: parsed.workflowName,
+      config,
+      steps: resolved.map((r) => r.plugin),
+      io,
     })
     return success ? 0 : 1
   })

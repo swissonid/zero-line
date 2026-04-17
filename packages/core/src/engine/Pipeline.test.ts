@@ -1,9 +1,21 @@
 import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
-import { definePipeline, makeDefaultContext } from "./Pipeline"
+import { definePipeline, DefaultRuntimeLayer, makeDefaultContext } from "./Pipeline"
 import { defineStep, defineEffectStep } from "../step-loader/StepContract"
 import { LoggerService } from "../ports/LoggerService"
 import { ArtifactService } from "../ports/ArtifactService"
+
+// Test harness: run a pipeline's execute Effect with the default runtime layer
+// and return the resolved StepResult array.
+function runPipeline<R>(pipeline: { readonly execute: Effect.Effect<ReadonlyArray<unknown>, never, R> }) {
+  return Effect.runPromise(
+    Effect.provide(pipeline.execute, DefaultRuntimeLayer) as Effect.Effect<
+      ReadonlyArray<unknown>,
+      never,
+      never
+    >
+  )
+}
 
 describe("Pipeline", () => {
   test("executes steps in dependency order", async () => {
@@ -31,7 +43,7 @@ describe("Pipeline", () => {
       workflow: ["first", "second"],
     })
 
-    const results = await pipeline.execute()
+    const results = (await runPipeline(pipeline)) as ReadonlyArray<{ status: string }>
 
     expect(executionLog).toEqual(["first", "second"])
     expect(results.every((r) => r.status === "pass")).toBe(true)
@@ -62,7 +74,10 @@ describe("Pipeline", () => {
       workflow: ["failing", "should-not-run"],
     })
 
-    const results = await pipeline.execute()
+    const results = (await runPipeline(pipeline)) as ReadonlyArray<{
+      status: string
+      error?: string
+    }>
 
     expect(executionLog).toEqual(["failing"])
     expect(results[0].status).toBe("fail")
@@ -85,7 +100,10 @@ describe("Pipeline", () => {
       workflow: ["effectful"],
     })
 
-    const results = await pipeline.execute()
+    const results = (await runPipeline(pipeline)) as ReadonlyArray<{
+      status: string
+      output?: Record<string, unknown>
+    }>
 
     expect(results[0].status).toBe("pass")
     expect(results[0].output).toEqual({ ran: true })
@@ -117,7 +135,11 @@ describe("Pipeline", () => {
       workflow: ["writer", "reader"],
     })
 
-    const results = await pipeline.execute()
+    const results = (await runPipeline(pipeline)) as ReadonlyArray<{
+      name: string
+      status: string
+      output?: Record<string, unknown>
+    }>
 
     expect(results.every((r) => r.status === "pass")).toBe(true)
     expect(results.find((r) => r.name === "reader")?.output).toEqual({ value: 42 })
@@ -141,7 +163,10 @@ describe("Pipeline", () => {
       workflow: ["boom", "after-boom"],
     })
 
-    const results = await pipeline.execute()
+    const results = (await runPipeline(pipeline)) as ReadonlyArray<{
+      name: string
+      status: string
+    }>
 
     expect(results.find((r) => r.name === "boom")?.status).toBe("fail")
     expect(results.find((r) => r.name === "after-boom")?.status).toBe("skipped")
@@ -161,9 +186,20 @@ describe("Pipeline", () => {
       workflow: ["timed"],
     })
 
-    const results = await pipeline.execute()
+    const results = (await runPipeline(pipeline)) as ReadonlyArray<{ durationMs: number }>
 
     expect(results[0].durationMs).toBeGreaterThanOrEqual(40)
+  })
+
+  test("execute is an Effect, not a function", () => {
+    const step = defineStep({ name: "noop", run: async () => ({}) })
+    const pipeline = definePipeline({ steps: [step], workflow: ["noop"] })
+
+    // Regression guard: `execute` must be an Effect value, not a thunk.
+    // This prevents callers from accidentally `await pipeline.execute()` again
+    // (which would throw "execute is not a function").
+    expect(typeof pipeline.execute).toBe("object")
+    expect(Effect.isEffect(pipeline.execute)).toBe(true)
   })
 })
 

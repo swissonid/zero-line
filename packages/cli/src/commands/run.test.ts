@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test"
+import { Effect } from "effect"
 import { defineStep, type ZlConfig } from "@zl/core"
 import { runWorkflow } from "./run"
 import { makeIO } from "../test-utils/cli-io"
@@ -12,12 +13,14 @@ const mkConfig = (workflows: Record<string, string[]>): ZlConfig => ({
 describe("runWorkflow", () => {
   test("returns false and reports when the workflow is not found", async () => {
     const { io, err } = makeIO()
-    const result = await runWorkflow({
-      workflowName: "missing",
-      config: mkConfig({ ci: ["hello"] }),
-      steps: [],
-      io,
-    })
+    const result = await Effect.runPromise(
+      runWorkflow({
+        workflowName: "missing",
+        config: mkConfig({ ci: ["hello"] }),
+        steps: [],
+        io,
+      })
+    )
     expect(result).toBe(false)
     expect(err.join("\n")).toContain("missing")
     expect(err.join("\n")).toContain("Available workflows")
@@ -26,12 +29,14 @@ describe("runWorkflow", () => {
   test("returns true when all steps pass", async () => {
     const { io } = makeIO()
     const step = defineStep({ name: "ok", run: async () => ({}) })
-    const result = await runWorkflow({
-      workflowName: "ci",
-      config: mkConfig({ ci: ["ok"] }),
-      steps: [step],
-      io,
-    })
+    const result = await Effect.runPromise(
+      runWorkflow({
+        workflowName: "ci",
+        config: mkConfig({ ci: ["ok"] }),
+        steps: [step],
+        io,
+      })
+    )
     expect(result).toBe(true)
   })
 
@@ -43,12 +48,14 @@ describe("runWorkflow", () => {
         throw new Error("nope")
       },
     })
-    const result = await runWorkflow({
-      workflowName: "ci",
-      config: mkConfig({ ci: ["boom"] }),
-      steps: [step],
-      io,
-    })
+    const result = await Effect.runPromise(
+      runWorkflow({
+        workflowName: "ci",
+        config: mkConfig({ ci: ["boom"] }),
+        steps: [step],
+        io,
+      })
+    )
     expect(result).toBe(false)
   })
 
@@ -60,20 +67,24 @@ describe("runWorkflow", () => {
     console.log = (m: string) => logged.push(String(m))
     console.error = (m: string) => errored.push(String(m))
     try {
-      const notFound = await runWorkflow({
-        workflowName: "absent",
-        config: mkConfig({ ci: ["hello"] }),
-        steps: [],
-      })
+      const notFound = await Effect.runPromise(
+        runWorkflow({
+          workflowName: "absent",
+          config: mkConfig({ ci: ["hello"] }),
+          steps: [],
+        })
+      )
       expect(notFound).toBe(false)
       expect(errored.some((m) => m.includes("absent"))).toBe(true)
 
       const step = defineStep({ name: "ok", run: async () => ({}) })
-      const passed = await runWorkflow({
-        workflowName: "ci",
-        config: mkConfig({ ci: ["ok"] }),
-        steps: [step],
-      })
+      const passed = await Effect.runPromise(
+        runWorkflow({
+          workflowName: "ci",
+          config: mkConfig({ ci: ["ok"] }),
+          steps: [step],
+        })
+      )
       expect(passed).toBe(true)
       expect(logged.some((m) => m.includes("Running workflow"))).toBe(true)
     } finally {

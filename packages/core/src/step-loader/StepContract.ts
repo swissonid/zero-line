@@ -151,7 +151,7 @@ export interface SimpleStepDef<TOpts = Record<string, unknown>> {
   /** Environment variables this step needs to be set. See {@link Requirement}. */
   readonly requiredEnv?: Requirement<TOpts>
   /** Extra `step:sub` CLI verbs this step exposes. See {@link SubcommandHandler}. */
-  readonly subcommands?: Record<string, SubcommandHandler>
+  readonly subcommands?: Readonly<Record<string, SubcommandHandler>>
   readonly run: (opts: TOpts, ctx: StepContext) => Promise<Record<string, unknown>>
 }
 
@@ -174,7 +174,7 @@ export interface EffectStepDef<TOpts = Record<string, unknown>> {
   /** Environment variables this step needs to be set. See {@link Requirement}. */
   readonly requiredEnv?: Requirement<TOpts>
   /** Extra `step:sub` CLI verbs this step exposes. See {@link SubcommandHandler}. */
-  readonly subcommands?: Record<string, SubcommandHandler>
+  readonly subcommands?: Readonly<Record<string, SubcommandHandler>>
   readonly run: (opts: TOpts) => Effect.Effect<Record<string, unknown>, unknown, unknown>
 }
 
@@ -199,7 +199,7 @@ export interface SimplePluginStep {
   /** See {@link SimpleStepDef.requiredEnv}. Widened to opaque options at the compiled stage. */
   readonly requiredEnv?: Requirement<Record<string, unknown>>
   /** See {@link SimpleStepDef.subcommands}. Consumed by the SubcommandRegistry (Task 14). */
-  readonly subcommands?: Record<string, SubcommandHandler>
+  readonly subcommands?: Readonly<Record<string, SubcommandHandler>>
   readonly execute: (opts: Record<string, unknown>, ctx: StepContext) => Promise<Record<string, unknown>>
 }
 
@@ -222,7 +222,7 @@ export interface EffectPluginStep {
   /** See {@link EffectStepDef.requiredEnv}. Widened to opaque options at the compiled stage. */
   readonly requiredEnv?: Requirement<Record<string, unknown>>
   /** See {@link EffectStepDef.subcommands}. Consumed by the SubcommandRegistry (Task 14). */
-  readonly subcommands?: Record<string, SubcommandHandler>
+  readonly subcommands?: Readonly<Record<string, SubcommandHandler>>
   readonly run: (opts: Record<string, unknown>) => Effect.Effect<Record<string, unknown>, unknown, unknown>
 }
 

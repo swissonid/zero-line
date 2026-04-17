@@ -1,5 +1,14 @@
 // Step contract
-export { defineStep, defineEffectStep, type StepContext, type ResolvedStep } from "./step-loader/StepContract"
+export {
+  defineStep,
+  defineEffectStep,
+  type StepContext,
+  type OptionsSchema,
+  type PluginStep,
+  type SimplePluginStep,
+  type EffectPluginStep,
+  type ResolvedStep,
+} from "./step-loader/StepContract"
 export { loadSteps } from "./step-loader/StepLoader"
 export { resolveShortName, detectCollisions } from "./step-loader/StepNameResolver"
 

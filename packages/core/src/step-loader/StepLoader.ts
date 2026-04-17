@@ -1,4 +1,4 @@
-import type { ResolvedStep } from "./StepContract"
+import type { PluginStep } from "./StepContract"
 
 export interface ValidationResult {
   readonly valid: boolean
@@ -6,7 +6,7 @@ export interface ValidationResult {
 }
 
 export interface LoadResult {
-  readonly steps: ReadonlyArray<ResolvedStep>
+  readonly steps: ReadonlyArray<PluginStep>
   readonly errors: ReadonlyArray<string>
 }
 
@@ -40,13 +40,13 @@ export function validateStep(step: unknown): ValidationResult {
 }
 
 export function loadSteps(rawSteps: ReadonlyArray<unknown>): LoadResult {
-  const steps: ResolvedStep[] = []
+  const steps: PluginStep[] = []
   const errors: string[] = []
 
   for (const raw of rawSteps) {
     const validation = validateStep(raw)
     if (validation.valid) {
-      steps.push(raw as ResolvedStep)
+      steps.push(raw as PluginStep)
     } else {
       errors.push(validation.error!)
     }

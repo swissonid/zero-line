@@ -1,12 +1,12 @@
 import { definePipeline } from "@zl/core"
-import type { ResolvedStep, ZlConfig } from "@zl/core"
+import type { PluginStep, ZlConfig } from "@zl/core"
 import { renderResults } from "../output/Renderer"
 import { defaultIO, type CliIO } from "../io"
 
 export interface RunOptions {
   readonly workflowName: string
   readonly config: ZlConfig
-  readonly steps: ReadonlyArray<ResolvedStep>
+  readonly steps: ReadonlyArray<PluginStep>
   readonly io?: CliIO
 }
 

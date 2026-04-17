@@ -99,3 +99,87 @@ describe("defineEffectStep", () => {
     expect(step._tag).toBe("effect")
   })
 })
+
+describe("step requirements", () => {
+  test("defineStep accepts static requiredSecrets array", () => {
+    const step = defineStep({
+      name: "sign-ios",
+      requiredSecrets: ["APPLE_API_KEY", "APPLE_ISSUER_ID"],
+      run: async () => ({}),
+    })
+    expect(step.requiredSecrets).toEqual(["APPLE_API_KEY", "APPLE_ISSUER_ID"])
+  })
+
+  test("defineStep accepts dynamic requiredSecrets function", () => {
+    const step = defineStep<{ teamId: string }>({
+      name: "sign-ios",
+      requiredSecrets: (opts) => [`APPLE_API_KEY_${opts.teamId}`],
+      run: async () => ({}),
+    })
+    expect(typeof step.requiredSecrets).toBe("function")
+    const fn = step.requiredSecrets as (o: Record<string, unknown>) => ReadonlyArray<string>
+    expect(fn({ teamId: "XYZ" })).toEqual(["APPLE_API_KEY_XYZ"])
+  })
+
+  test("defineStep accepts requiredToolchains and requiredEnv", () => {
+    const step = defineStep({
+      name: "build-ios",
+      requiredToolchains: ["xcode"],
+      requiredEnv: ["CI"],
+      run: async () => ({}),
+    })
+    expect(step.requiredToolchains).toEqual(["xcode"])
+    expect(step.requiredEnv).toEqual(["CI"])
+  })
+
+  test("defineEffectStep accepts static requiredSecrets array", () => {
+    const step = defineEffectStep({
+      name: "sign-ios-effect",
+      requiredSecrets: ["APPLE_API_KEY"],
+      run: () => Effect.succeed({}),
+    })
+    expect(step.requiredSecrets).toEqual(["APPLE_API_KEY"])
+  })
+
+  test("defineEffectStep accepts dynamic requiredSecrets function", () => {
+    const step = defineEffectStep<{ teamId: string }>({
+      name: "sign-ios-effect",
+      requiredSecrets: (opts) => [`APPLE_API_KEY_${opts.teamId}`],
+      run: () => Effect.succeed({}),
+    })
+    expect(typeof step.requiredSecrets).toBe("function")
+    const fn = step.requiredSecrets as (o: Record<string, unknown>) => ReadonlyArray<string>
+    expect(fn({ teamId: "ABC" })).toEqual(["APPLE_API_KEY_ABC"])
+  })
+
+  test("defineEffectStep accepts requiredToolchains and requiredEnv", () => {
+    const step = defineEffectStep({
+      name: "build-ios-effect",
+      requiredToolchains: ["xcode"],
+      requiredEnv: ["CI"],
+      run: () => Effect.succeed({}),
+    })
+    expect(step.requiredToolchains).toEqual(["xcode"])
+    expect(step.requiredEnv).toEqual(["CI"])
+  })
+
+  test("defineStep omits requirement fields when not provided", () => {
+    const step = defineStep({
+      name: "bare",
+      run: async () => ({}),
+    })
+    expect(step.requiredSecrets).toBeUndefined()
+    expect(step.requiredToolchains).toBeUndefined()
+    expect(step.requiredEnv).toBeUndefined()
+  })
+
+  test("defineEffectStep omits requirement fields when not provided", () => {
+    const step = defineEffectStep({
+      name: "bare-effect",
+      run: () => Effect.succeed({}),
+    })
+    expect(step.requiredSecrets).toBeUndefined()
+    expect(step.requiredToolchains).toBeUndefined()
+    expect(step.requiredEnv).toBeUndefined()
+  })
+})

@@ -31,6 +31,30 @@
 import { Effect } from "effect"
 
 /**
+ * A step-author–declared list of required external identifiers (secrets,
+ * toolchains, or env-vars) a step needs to run.
+ *
+ * - The **static** form (`ReadonlyArray<string>`) lists fixed keys, known at
+ *   authoring time — e.g. `["APPLE_API_KEY", "APPLE_ISSUER_ID"]`.
+ * - The **dynamic** form (`(opts) => ReadonlyArray<string>`) lets the step
+ *   author derive keys from the workflow-bound options, e.g.
+ *   `(opts) => [\`APPLE_API_KEY_${opts.teamId}\`]`.
+ *
+ * Used by {@link SimpleStepDef} / {@link EffectStepDef} for `requiredSecrets`,
+ * `requiredToolchains`, and `requiredEnv`. The requirements gatherer (Task 10)
+ * collects these into a pipeline-wide summary; the pre-flight check (Task 11)
+ * evaluates that summary against the configured environment before any step
+ * runs.
+ *
+ * The `TOpts` parameter matches the step's options type in the authored defs;
+ * it widens to `Record<string, unknown>` once the step is compiled into a
+ * {@link PluginStep}.
+ */
+export type Requirement<TOpts> =
+  | ReadonlyArray<string>
+  | ((opts: TOpts) => ReadonlyArray<string>)
+
+/**
  * A minimal, schema-agnostic validator for plugin options.
  *
  * Plugins declare one via `optionsSchema` on their step definition. The resolver
@@ -97,6 +121,12 @@ export interface SimpleStepDef<TOpts = Record<string, unknown>> {
   readonly name: string
   readonly dependsOnSteps?: ReadonlyArray<string>
   readonly optionsSchema?: OptionsSchema<TOpts>
+  /** Secrets (e.g. `APPLE_API_KEY`) this step needs from the secret store. See {@link Requirement}. */
+  readonly requiredSecrets?: Requirement<TOpts>
+  /** Toolchains (e.g. `xcode`, `gradle`) this step needs on PATH. See {@link Requirement}. */
+  readonly requiredToolchains?: Requirement<TOpts>
+  /** Environment variables this step needs to be set. See {@link Requirement}. */
+  readonly requiredEnv?: Requirement<TOpts>
   readonly run: (opts: TOpts, ctx: StepContext) => Promise<Record<string, unknown>>
 }
 
@@ -112,6 +142,12 @@ export interface EffectStepDef<TOpts = Record<string, unknown>> {
   readonly name: string
   readonly dependsOnSteps?: ReadonlyArray<string>
   readonly optionsSchema?: OptionsSchema<TOpts>
+  /** Secrets this step needs from the secret store. See {@link Requirement}. */
+  readonly requiredSecrets?: Requirement<TOpts>
+  /** Toolchains this step needs on PATH. See {@link Requirement}. */
+  readonly requiredToolchains?: Requirement<TOpts>
+  /** Environment variables this step needs to be set. See {@link Requirement}. */
+  readonly requiredEnv?: Requirement<TOpts>
   readonly run: (opts: TOpts) => Effect.Effect<Record<string, unknown>, unknown, unknown>
 }
 
@@ -129,6 +165,12 @@ export interface SimplePluginStep {
   readonly name: string
   readonly dependsOnSteps: ReadonlyArray<string>
   readonly optionsSchema?: OptionsSchema<unknown>
+  /** See {@link SimpleStepDef.requiredSecrets}. Widened to opaque options at the compiled stage. */
+  readonly requiredSecrets?: Requirement<Record<string, unknown>>
+  /** See {@link SimpleStepDef.requiredToolchains}. Widened to opaque options at the compiled stage. */
+  readonly requiredToolchains?: Requirement<Record<string, unknown>>
+  /** See {@link SimpleStepDef.requiredEnv}. Widened to opaque options at the compiled stage. */
+  readonly requiredEnv?: Requirement<Record<string, unknown>>
   readonly execute: (opts: Record<string, unknown>, ctx: StepContext) => Promise<Record<string, unknown>>
 }
 
@@ -144,6 +186,12 @@ export interface EffectPluginStep {
   readonly name: string
   readonly dependsOnSteps: ReadonlyArray<string>
   readonly optionsSchema?: OptionsSchema<unknown>
+  /** See {@link EffectStepDef.requiredSecrets}. Widened to opaque options at the compiled stage. */
+  readonly requiredSecrets?: Requirement<Record<string, unknown>>
+  /** See {@link EffectStepDef.requiredToolchains}. Widened to opaque options at the compiled stage. */
+  readonly requiredToolchains?: Requirement<Record<string, unknown>>
+  /** See {@link EffectStepDef.requiredEnv}. Widened to opaque options at the compiled stage. */
+  readonly requiredEnv?: Requirement<Record<string, unknown>>
   readonly run: (opts: Record<string, unknown>) => Effect.Effect<Record<string, unknown>, unknown, unknown>
 }
 
@@ -196,6 +244,9 @@ export function defineStep<TOpts = Record<string, unknown>>(
     name: def.name,
     dependsOnSteps: def.dependsOnSteps ?? [],
     optionsSchema: def.optionsSchema as OptionsSchema<unknown> | undefined,
+    requiredSecrets: def.requiredSecrets as Requirement<Record<string, unknown>> | undefined,
+    requiredToolchains: def.requiredToolchains as Requirement<Record<string, unknown>> | undefined,
+    requiredEnv: def.requiredEnv as Requirement<Record<string, unknown>> | undefined,
     execute: (opts, ctx) => def.run(opts as TOpts, ctx),
   }
 }
@@ -214,6 +265,9 @@ export function defineEffectStep<TOpts = Record<string, unknown>>(
     name: def.name,
     dependsOnSteps: def.dependsOnSteps ?? [],
     optionsSchema: def.optionsSchema as OptionsSchema<unknown> | undefined,
+    requiredSecrets: def.requiredSecrets as Requirement<Record<string, unknown>> | undefined,
+    requiredToolchains: def.requiredToolchains as Requirement<Record<string, unknown>> | undefined,
+    requiredEnv: def.requiredEnv as Requirement<Record<string, unknown>> | undefined,
     run: (opts) => def.run(opts as TOpts),
   }
 }

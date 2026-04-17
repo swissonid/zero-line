@@ -1140,6 +1140,7 @@ Create `packages/core/src/step-loader/StepInstanceResolver.test.ts`:
 
 ```ts
 import { describe, test, expect } from "bun:test"
+import { Effect, Exit } from "effect"
 import { defineStep } from "./StepContract"
 import { resolveStepInstances } from "./StepInstanceResolver"
 import type { StepInstance } from "../config/ConfigTypes"
@@ -1160,7 +1161,7 @@ describe("resolveStepInstances", () => {
       { name: "hello", options: { who: "zl" } },
     ]
 
-    const resolved = await resolveStepInstances(instances, loader)
+    const resolved = await Effect.runPromise(resolveStepInstances(instances, loader))
 
     expect(resolved).toHaveLength(1)
     expect(resolved[0].name).toBe("hello")
@@ -1174,20 +1175,18 @@ describe("resolveStepInstances", () => {
     }
     const instances: ReadonlyArray<StepInstance> = [{ name: "missing", options: {} }]
 
-    await expect(resolveStepInstances(instances, loader)).rejects.toMatchObject({
-      _tag: "StepError",
-      code: "STEP_NOT_FOUND",
-    })
+    const exit = await Effect.runPromiseExit(resolveStepInstances(instances, loader))
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(JSON.stringify(exit)).toContain("STEP_NOT_FOUND")
   })
 
   test("fails with INVALID_PLUGIN when the loaded export is not a valid plugin", async () => {
     const loader = async (_name: string) => ({ nope: true } as any)
     const instances: ReadonlyArray<StepInstance> = [{ name: "broken", options: {} }]
 
-    await expect(resolveStepInstances(instances, loader)).rejects.toMatchObject({
-      _tag: "StepError",
-      code: "INVALID_PLUGIN",
-    })
+    const exit = await Effect.runPromiseExit(resolveStepInstances(instances, loader))
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(JSON.stringify(exit)).toContain("INVALID_PLUGIN")
   })
 })
 ```
@@ -1205,54 +1204,71 @@ Expected: FAIL — module does not exist.
 Create `packages/core/src/step-loader/StepInstanceResolver.ts`:
 
 ```ts
+import { Effect } from "effect"
 import { StepError } from "../engine/StepError"
 import type { PluginStep, ResolvedStep } from "./StepContract"
 import { validateStep } from "./StepLoader"
 import type { StepInstance } from "../config/ConfigTypes"
 
+// Loader stays Promise-valued at the boundary because `import()` is
+// Promise-native; the resolver wraps it with Effect.tryPromise internally
+// so callers see only the Effect surface.
 export type PluginLoader = (name: string) => Promise<unknown>
 
 export const defaultPluginLoader: PluginLoader = async (name: string) => {
-  const mod = await import(name)
-  return mod.default ?? mod
+  const mod = (await import(name)) as Record<string, unknown>
+  return (mod.default ?? mod) as unknown
 }
 
-export async function resolveStepInstances(
-  instances: ReadonlyArray<StepInstance>,
-  loader: PluginLoader = defaultPluginLoader
-): Promise<ReadonlyArray<ResolvedStep>> {
-  const resolved: ResolvedStep[] = []
-  for (const instance of instances) {
-    let raw: unknown
-    try {
-      raw = await loader(instance.name)
-    } catch (cause) {
-      throw new StepError({
-        code: "STEP_NOT_FOUND",
-        message: `Failed to load step plugin '${instance.name}'`,
-        cause,
-      })
-    }
+function resolveOne(
+  instance: StepInstance,
+  loader: PluginLoader
+): Effect.Effect<ResolvedStep, StepError, never> {
+  return Effect.gen(function* () {
+    const raw = yield* Effect.tryPromise({
+      try: () => loader(instance.name),
+      catch: (cause) =>
+        new StepError({
+          code: "STEP_NOT_FOUND",
+          message: `Failed to load step plugin '${instance.name}'`,
+          cause,
+        }),
+    })
 
     const validation = validateStep(raw)
     if (!validation.valid) {
-      throw new StepError({
-        code: "INVALID_PLUGIN",
-        message: `Plugin '${instance.name}' is not a valid step: ${validation.error ?? "unknown"}`,
-      })
+      return yield* Effect.fail(
+        new StepError({
+          code: "INVALID_PLUGIN",
+          message: `Plugin '${instance.name}' is not a valid step: ${validation.error ?? "unknown"}`,
+        })
+      )
     }
 
     const plugin = raw as PluginStep
-    resolved.push({
+    return {
       plugin,
-      name: plugin.name,
+      // Workflow-bound name — keep the instance's identifier even when it
+      // is aliased away from plugin.name.
+      name: instance.name,
       dependsOnSteps: plugin.dependsOnSteps,
-      options: instance.options ?? {},
-    })
-  }
-  return resolved
+      options: instance.options,
+    }
+  })
+}
+
+export function resolveStepInstances(
+  instances: ReadonlyArray<StepInstance>,
+  loader: PluginLoader = defaultPluginLoader
+): Effect.Effect<ReadonlyArray<ResolvedStep>, StepError, never> {
+  return Effect.all(
+    instances.map((instance) => resolveOne(instance, loader)),
+    { concurrency: "unbounded" }
+  )
 }
 ```
+
+**Note on Promise vs Effect:** earlier drafts of this plan copied the `loadConfig` Promise idiom for the resolver body, which contradicted the summary at the top of this doc (`Effect<ReadonlyArray<ResolvedStep>, StepError>`). ZER-150 reconciled the two — the resolver now returns `Effect`, failures flow through the typed `StepError` channel, and per-instance resolution is parallelised via `Effect.all({ concurrency: "unbounded" })` (same semantics as the prior `Promise.all`).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1984,6 +2000,8 @@ git commit -m "feat(core): pipeline runs preflight and passes bound options to s
 ---
 
 ## Task 13: `ConfigLoader` — integrate step resolution and options-schema validation
+
+> **Historical note (ZER-150):** this task was executed and merged as PR #74 against the pre-ZER-150 Promise-based `ConfigLoader.ts`. ZER-150 subsequently deleted `ConfigLoader.ts` and moved its `validateStepOptions` into a standalone Effect helper at `packages/core/src/config/validateStepOptions.ts`. The code blocks below are preserved for historical context; the live implementation is in that helper plus `packages/core/src/adapters/FileConfig.ts` (`ConfigService.load`). See `docs/superpowers/plans/2026-04-17-zer-150-config-loading-effect-migration.md` for the migration details.
 
 **Files:**
 - Modify: `packages/core/src/config/ConfigLoader.ts`

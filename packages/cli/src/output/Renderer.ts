@@ -7,7 +7,10 @@ const SKIP = "\x1b[33m○\x1b[0m"
 export function renderStepResult(result: StepResult): string {
   const icon = result.status === "pass" ? PASS : result.status === "fail" ? FAIL : SKIP
   const duration = result.durationMs > 0 ? ` (${result.durationMs}ms)` : ""
-  const error = result.error ? `\n    Error: ${result.error}` : ""
+  const formattedError = result.error?.replace(/\n/g, "\n    ")
+  const error = formattedError
+    ? `\n    Error: ${result.code ? `[${result.code}] ` : ""}${formattedError}`
+    : ""
   return `  ${icon} ${result.name}${duration}${error}`
 }
 

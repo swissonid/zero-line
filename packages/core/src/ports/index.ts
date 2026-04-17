@@ -3,3 +3,4 @@ export { ConfigService, type IConfigService, ConfigLoadError, SecretNotFoundErro
 export { PlatformService, type IPlatformService, type OS, type Toolchain } from "./PlatformService"
 export { ArtifactService, type IArtifactService, type Artifact } from "./ArtifactService"
 export { ShellService, ShellError, type IShellService, type ShellSpawnOptions, type ShellResult } from "./ShellService"
+export { SecretStore, SecretStoreError, type ISecretStore, type SecretStoreErrorCode } from "./SecretStore"

@@ -1,4 +1,4 @@
-import type { ResolvedStep } from "./StepContract"
+import type { PluginStep } from "./StepContract"
 
 export interface ValidationResult {
   readonly valid: boolean
@@ -6,7 +6,7 @@ export interface ValidationResult {
 }
 
 export interface LoadResult {
-  readonly steps: ReadonlyArray<ResolvedStep>
+  readonly steps: ReadonlyArray<PluginStep>
   readonly errors: ReadonlyArray<string>
 }
 
@@ -36,17 +36,31 @@ export function validateStep(step: unknown): ValidationResult {
     return { valid: false, error: `Step '${s.name}' is an effect step but has no 'run' function` }
   }
 
+  if (s.optionsSchema !== undefined) {
+    const schema = s.optionsSchema as Record<string, unknown> | null
+    if (
+      typeof schema !== "object" ||
+      schema === null ||
+      typeof schema.decode !== "function"
+    ) {
+      return {
+        valid: false,
+        error: `Step '${s.name}' has an invalid optionsSchema (must be an object with a decode function)`,
+      }
+    }
+  }
+
   return { valid: true }
 }
 
 export function loadSteps(rawSteps: ReadonlyArray<unknown>): LoadResult {
-  const steps: ResolvedStep[] = []
+  const steps: PluginStep[] = []
   const errors: string[] = []
 
   for (const raw of rawSteps) {
     const validation = validateStep(raw)
     if (validation.valid) {
-      steps.push(raw as ResolvedStep)
+      steps.push(raw as PluginStep)
     } else {
       errors.push(validation.error!)
     }

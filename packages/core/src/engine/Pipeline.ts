@@ -1,6 +1,6 @@
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { buildExecutionOrder } from "./DependencyGraph"
-import type { ResolvedStep, StepContext } from "../step-loader/StepContract"
+import type { PluginStep, StepContext } from "../step-loader/StepContract"
 import { ConsoleLoggerLive } from "../adapters/ConsoleLogger"
 import { LocalPlatformLive, detectToolchains, platformSupports } from "../adapters/LocalPlatform"
 import { MemoryArtifactStoreLive } from "../adapters/MemoryArtifactStore"
@@ -20,7 +20,7 @@ export interface StepResult {
 }
 
 export interface PipelineConfig {
-  readonly steps: ReadonlyArray<ResolvedStep>
+  readonly steps: ReadonlyArray<PluginStep>
   readonly workflow: ReadonlyArray<string>
   readonly context?: Partial<StepContext>
   readonly runtimeLayer?: Layer.Layer<any, any, never>

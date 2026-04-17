@@ -56,6 +56,38 @@ describe("validateStep", () => {
     expect(result.valid).toBe(false)
     expect(result.error).toContain("run")
   })
+
+  test("rejects a step whose optionsSchema is not an object with decode()", () => {
+    const result = validateStep({
+      _tag: "simple",
+      name: "bad-schema",
+      optionsSchema: "not-an-object",
+      execute: async () => ({}),
+    } as any)
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain("optionsSchema")
+  })
+
+  test("rejects a step whose optionsSchema.decode is not a function", () => {
+    const result = validateStep({
+      _tag: "simple",
+      name: "bad-decode",
+      optionsSchema: { decode: "nope" },
+      execute: async () => ({}),
+    } as any)
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain("optionsSchema")
+  })
+
+  test("accepts a step with a valid optionsSchema", () => {
+    const step = defineStep({
+      name: "with-schema",
+      optionsSchema: { decode: (raw) => raw as Record<string, unknown> },
+      run: async () => ({}),
+    })
+    const result = validateStep(step)
+    expect(result.valid).toBe(true)
+  })
 })
 
 describe("loadSteps", () => {

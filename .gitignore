@@ -8,3 +8,4 @@ packages/cli/zl
 coverage
 __test_tmp*
 scratch/
+.claude/worktrees/

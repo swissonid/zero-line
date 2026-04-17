@@ -5,6 +5,11 @@
       "source": "paulrberg/agent-skills",
       "sourceType": "github",
       "computedHash": "273eb6d71f6b7732aaed3b6b61330be3ea56894223339aee4a294bd43cb61d0b"
+    },
+    "greploop": {
+      "source": "greptileai/skills",
+      "sourceType": "github",
+      "computedHash": "33acdf1841dd5308420d72f433527db6be524ac2af8955b83fe42df94ce6d717"
     }
   }
 }

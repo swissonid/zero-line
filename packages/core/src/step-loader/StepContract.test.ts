@@ -1,9 +1,26 @@
 import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
 import { defineStep, defineEffectStep } from "./StepContract"
+import type { OptionsSchema } from "./StepContract"
 import { LoggerService } from "../ports/LoggerService"
 
 describe("defineStep", () => {
+  test("accepts an optionsSchema and stores it on the plugin", () => {
+    const schema: OptionsSchema<{ name: string }> = {
+      decode: (raw) => {
+        const r = raw as Record<string, unknown>
+        if (typeof r.name !== "string") throw new Error("name must be a string")
+        return { name: r.name }
+      },
+    }
+    const step = defineStep({
+      name: "greet",
+      optionsSchema: schema,
+      run: async (opts) => ({ greeted: opts.name }),
+    })
+    expect(step.optionsSchema).toBe(schema)
+  })
+
   test("creates a valid step from async function", () => {
     const step = defineStep({
       name: "greet",
@@ -49,6 +66,22 @@ describe("defineStep", () => {
 })
 
 describe("defineEffectStep", () => {
+  test("accepts an optionsSchema and stores it on the plugin", () => {
+    const schema: OptionsSchema<{ count: number }> = {
+      decode: (raw) => {
+        const r = raw as Record<string, unknown>
+        if (typeof r.count !== "number") throw new Error("count must be a number")
+        return { count: r.count }
+      },
+    }
+    const step = defineEffectStep({
+      name: "count-effect",
+      optionsSchema: schema,
+      run: (_opts) => Effect.succeed({ done: true }),
+    })
+    expect(step.optionsSchema).toBe(schema)
+  })
+
   test("creates a valid step from Effect layer", () => {
     const step = defineEffectStep({
       name: "greet-effect",

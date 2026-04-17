@@ -232,6 +232,74 @@ describe("loadConfig", () => {
     }
   })
 
+  test("annotates errors with the source platform when a step is per-platform", async () => {
+    const good = defineStep({
+      name: "build",
+      optionsSchema: {
+        decode: (raw) => {
+          const r = raw as Record<string, unknown>
+          if (typeof r.scheme !== "string") throw new Error("scheme must be a string")
+          return r
+        },
+      },
+      run: async () => ({}),
+    })
+    const dir = withTmpProject(
+      "opt-platform-annotated",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        platforms: { ios: { steps: [{ name: "build", options: { scheme: 42 } }] } },
+        workflows: { ci: ["build"] },
+      }`
+    )
+    try {
+      await expect(
+        loadConfig(dir, { loader: async (n) => (n === "build" ? good : null) })
+      ).rejects.toThrow(/platform: ios/i)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("collects every invalid step in one ConfigValidationError instead of failing on the first", async () => {
+    const good = defineStep({
+      name: "build",
+      optionsSchema: {
+        decode: (raw) => {
+          const r = raw as Record<string, unknown>
+          if (typeof r.scheme !== "string") throw new Error("scheme must be a string")
+          return r
+        },
+      },
+      run: async () => ({}),
+    })
+    const dir = withTmpProject(
+      "opt-all-errors",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        steps: [{ name: "build", options: { scheme: 1 } }],
+        platforms: {
+          ios: { steps: [{ name: "build", options: { scheme: 2 } }] },
+          android: { steps: [{ name: "build", options: { scheme: 3 } }] },
+        },
+        workflows: { ci: ["build"] },
+      }`
+    )
+    try {
+      await expect(
+        loadConfig(dir, { loader: async (n) => (n === "build" ? good : null) })
+      ).rejects.toMatchObject({
+        issues: expect.arrayContaining([
+          expect.stringContaining("top-level"),
+          expect.stringContaining("platform: ios"),
+          expect.stringContaining("platform: android"),
+        ]),
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test("remains backwards-compatible when no loader is provided", async () => {
     const dir = withTmpProject(
       "no-loader",

@@ -95,21 +95,27 @@ async function validateStepOptions(
   config: ZlConfig,
   loader: PluginLoader
 ): Promise<void> {
-  const allInstances: ReadonlyArray<StepInstance> = [
-    ...(config.steps ?? []),
-    ...Object.values(config.platforms).flatMap((p) => p?.steps ?? []),
+  type LabeledInstance = { readonly inst: StepInstance; readonly source: string }
+
+  const allInstances: ReadonlyArray<LabeledInstance> = [
+    ...(config.steps ?? []).map((inst) => ({ inst, source: "top-level" })),
+    ...Object.entries(config.platforms).flatMap(([platform, p]) =>
+      (p?.steps ?? []).map((inst) => ({ inst, source: `platform: ${platform}` }))
+    ),
   ]
 
-  for (const inst of allInstances) {
+  const errors: string[] = []
+  for (const { inst, source } of allInstances) {
     const plugin = await loader(inst.name)
     if (!plugin || !plugin.optionsSchema) continue
     try {
       plugin.optionsSchema.decode(inst.options ?? {})
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
-      throw new ConfigValidationError([
-        `Invalid options for step '${inst.name}': ${reason}`,
-      ])
+      errors.push(`Invalid options for step '${inst.name}' (${source}): ${reason}`)
     }
+  }
+  if (errors.length > 0) {
+    throw new ConfigValidationError(errors)
   }
 }

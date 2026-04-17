@@ -11,6 +11,11 @@ export {
 } from "./step-loader/StepContract"
 export { loadSteps } from "./step-loader/StepLoader"
 export { resolveShortName, detectCollisions } from "./step-loader/StepNameResolver"
+export {
+  gatherRequirements,
+  type RequirementEntry,
+  type Requirements,
+} from "./step-loader/StepRequirements"
 
 // Config
 export { defineConfig, type ZlConfig, type Platform, type StepInstance } from "./config/ConfigTypes"

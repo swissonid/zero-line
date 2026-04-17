@@ -11,6 +11,7 @@ import {
   type ZlConfig,
 } from "@zl/core"
 import { runWorkflow } from "./commands/run"
+import { runInit } from "./commands/init"
 import { defaultIO, type CliIO } from "./io"
 
 export { defaultIO, type CliIO }
@@ -102,6 +103,17 @@ export async function runCli(
   const io = opts.io ?? defaultIO
   const parsed = parseArgs(args, io)
   if (typeof parsed === "number") return parsed
+
+  // `init` runs *before* the config-load Effect program: it creates the
+  // config file that the program would otherwise require. It also doesn't
+  // need any of the services in the CLI runtime layer (no Shell, Logger,
+  // Artifact, or Platform access), so a Promise-returning function here
+  // keeps the "no config yet" boundary explicit and avoids dragging the
+  // init command through `makeFileConfigLayer`.
+  if (parsed.command === "init") {
+    const force = args.includes("--force")
+    return runInit({ cwd: opts.cwd, io, force })
+  }
 
   const program = Effect.gen(function* () {
     const service = yield* ConfigService

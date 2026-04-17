@@ -15,12 +15,20 @@ export function makeIO(
     io: {
       stdout: (m) => out.push(m),
       stderr: (m) => err.push(m),
-      prompt: async (q) => {
+      // Mirror the real `makePrompt` contract: when the scripted answer is
+      // empty and a default is provided, return the default. This keeps tests
+      // honest about what callers actually observe from a user hitting
+      // <enter>.
+      prompt: async (q, opts) => {
         prompts.push(q)
         if (answers.length === 0) {
           throw new Error(`makeIO: no scripted answer available for prompt '${q}'`)
         }
-        return answers.shift()!
+        const answer = answers.shift()!
+        if (answer.length === 0 && opts?.default !== undefined) {
+          return opts.default
+        }
+        return answer
       },
     },
     out,

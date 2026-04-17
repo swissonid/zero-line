@@ -7,3 +7,4 @@ packages/cli/zl
 .DS_Store
 coverage
 __test_tmp*
+scratch/

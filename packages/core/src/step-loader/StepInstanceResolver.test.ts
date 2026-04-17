@@ -48,4 +48,17 @@ describe("resolveStepInstances", () => {
       code: "INVALID_PLUGIN",
     })
   })
+
+  test("preserves the workflow-bound instance name even when it differs from plugin.name", async () => {
+    // Plugin identifies itself as "hello"; workflow references it as "@org/hello-plugin".
+    const loader = async (_name: string) => hello
+    const instances: ReadonlyArray<StepInstance> = [
+      { name: "@org/hello-plugin", options: { who: "aliased" } },
+    ]
+
+    const resolved = await resolveStepInstances(instances, loader)
+
+    expect(resolved[0].name).toBe("@org/hello-plugin")
+    expect(resolved[0].plugin.name).toBe("hello")
+  })
 })

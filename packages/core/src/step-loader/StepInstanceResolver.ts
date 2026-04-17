@@ -81,36 +81,36 @@ export async function resolveStepInstances(
   instances: ReadonlyArray<StepInstance>,
   loader: PluginLoader = defaultPluginLoader
 ): Promise<ReadonlyArray<ResolvedStep>> {
-  const resolved: ResolvedStep[] = []
-  for (const instance of instances) {
-    let raw: unknown
-    try {
-      raw = await loader(instance.name)
-    } catch (cause) {
-      throw new StepError({
-        code: "STEP_NOT_FOUND",
-        message: `Failed to load step plugin '${instance.name}'`,
-        cause,
-      })
-    }
+  return Promise.all(
+    instances.map(async (instance) => {
+      let raw: unknown
+      try {
+        raw = await loader(instance.name)
+      } catch (cause) {
+        throw new StepError({
+          code: "STEP_NOT_FOUND",
+          message: `Failed to load step plugin '${instance.name}'`,
+          cause,
+        })
+      }
 
-    const validation = validateStep(raw)
-    if (!validation.valid) {
-      throw new StepError({
-        code: "INVALID_PLUGIN",
-        message: `Plugin '${instance.name}' is not a valid step: ${
-          validation.error ?? "unknown"
-        }`,
-      })
-    }
+      const validation = validateStep(raw)
+      if (!validation.valid) {
+        throw new StepError({
+          code: "INVALID_PLUGIN",
+          message: `Plugin '${instance.name}' is not a valid step: ${
+            validation.error ?? "unknown"
+          }`,
+        })
+      }
 
-    const plugin = raw as PluginStep
-    resolved.push({
-      plugin,
-      name: plugin.name,
-      dependsOnSteps: plugin.dependsOnSteps,
-      options: instance.options ?? {},
+      const plugin = raw as PluginStep
+      return {
+        plugin,
+        name: instance.name,
+        dependsOnSteps: plugin.dependsOnSteps,
+        options: instance.options,
+      }
     })
-  }
-  return resolved
+  )
 }

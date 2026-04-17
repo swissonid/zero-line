@@ -109,12 +109,17 @@ export async function runCli(
 ): Promise<number> {
   const io = opts.io ?? defaultIO
 
-  // Step-subcommand dispatch: any first-arg token containing a `:` is a
-  // `step:sub` invocation and skips workflow parsing entirely. Kept as an
-  // isolated early-return block so it merges cleanly against other branches
-  // touching the main command dispatch (cf. ZER-123).
+  // Step-subcommand dispatch: only treat a `step:sub` token as a subcommand
+  // when that exact key is registered. Otherwise fall back to normal workflow
+  // parsing so workflow names containing `:` (for example `release:testflight`)
+  // still work with the shorthand `zl <workflow>`.
   const first = args[0]
-  if (first && first.includes(":") && first !== "--help" && first !== "-h") {
+  if (
+    first &&
+    first !== "--help" &&
+    first !== "-h" &&
+    opts.subcommandRegistry?.has(first)
+  ) {
     return dispatchSubcommand(first, args.slice(1), opts.subcommandRegistry, io)
   }
 

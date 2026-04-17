@@ -21,6 +21,7 @@ import { StepError } from "../engine/StepError"
 import type { PluginStep, ResolvedStep } from "./StepContract"
 import { validateStep } from "./StepLoader"
 import type { StepInstance } from "../config/ConfigTypes"
+import { unwrapDefaultExport } from "./unwrapDefaultExport"
 
 /**
  * How a step name is turned into a raw plugin module. Returns the module's
@@ -39,8 +40,7 @@ export type PluginLoader = (name: string) => Promise<unknown>
  * Kept trivial so tests can avoid it entirely by passing their own loader.
  */
 export const defaultPluginLoader: PluginLoader = async (name: string) => {
-  const mod = (await import(name)) as Record<string, unknown>
-  return (mod.default ?? mod) as unknown
+  return unwrapDefaultExport(await import(name))
 }
 
 function resolveOne(

@@ -130,6 +130,83 @@ describe("runCli", () => {
     }
   })
 
+  test("dispatches 'step:sub' to the registered subcommand handler", async () => {
+    const { io, out } = makeIO()
+    let received: ReadonlyArray<string> | undefined
+    const exit = await runCli(["hello:ping", "--flag", "value"], {
+      cwd: "/tmp",
+      io,
+      subcommandRegistry: new Map([
+        [
+          "hello:ping",
+          async (argv) => {
+            received = argv
+            io.stdout("pong")
+            return 0
+          },
+        ],
+      ]),
+    })
+    expect(exit).toBe(0)
+    expect(out.join("\n")).toContain("pong")
+    expect(received).toEqual(["--flag", "value"])
+  })
+
+  test("returns the handler's exit code for a 'step:sub' dispatch", async () => {
+    const { io } = makeIO()
+    const exit = await runCli(["sign-ios:doctor"], {
+      cwd: "/tmp",
+      io,
+      subcommandRegistry: new Map([
+        ["sign-ios:doctor", async () => 42],
+      ]),
+    })
+    expect(exit).toBe(42)
+  })
+
+  test("errors with a readable message when the subcommand key is unknown", async () => {
+    const { io, err } = makeIO()
+    const exit = await runCli(["sign-ios:nope"], {
+      cwd: "/tmp",
+      io,
+      subcommandRegistry: new Map([
+        ["sign-ios:init", async () => 0],
+        ["sign-ios:doctor", async () => 0],
+      ]),
+    })
+    expect(exit).toBe(1)
+    const msg = err.join("\n")
+    expect(msg).toContain("sign-ios:nope")
+    expect(msg).toContain("sign-ios:init")
+    expect(msg).toContain("sign-ios:doctor")
+  })
+
+  test("errors when a 'step:sub' command is invoked without a registry", async () => {
+    const { io, err } = makeIO()
+    const exit = await runCli(["sign-ios:init"], { cwd: "/tmp", io })
+    expect(exit).toBe(1)
+    expect(err.join("\n")).toContain("sign-ios:init")
+  })
+
+  test("dispatches 'step:sub' where step.name contains dashes", async () => {
+    const { io, out } = makeIO()
+    const exit = await runCli(["sign-ios:init"], {
+      cwd: "/tmp",
+      io,
+      subcommandRegistry: new Map([
+        [
+          "sign-ios:init",
+          async () => {
+            io.stdout("initialized")
+            return 0
+          },
+        ],
+      ]),
+    })
+    expect(exit).toBe(0)
+    expect(out.join("\n")).toContain("initialized")
+  })
+
   test("defaultIO writes to console", () => {
     const origLog = console.log
     const origErr = console.error

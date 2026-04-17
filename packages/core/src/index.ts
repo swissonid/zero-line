@@ -8,7 +8,9 @@ export {
   type SimplePluginStep,
   type EffectPluginStep,
   type ResolvedStep,
+  type SubcommandHandler,
 } from "./step-loader/StepContract"
+export { buildSubcommandRegistry } from "./cli/SubcommandRegistry"
 export { loadSteps } from "./step-loader/StepLoader"
 export { resolveShortName, detectCollisions } from "./step-loader/StepNameResolver"
 export {

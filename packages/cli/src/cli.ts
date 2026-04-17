@@ -8,6 +8,7 @@ import {
   type Platform,
   type OptionsPluginLoader,
   type PluginLike,
+  type SubcommandHandler,
   type ZlConfig,
 } from "@zl/core"
 import { runWorkflow } from "./commands/run"
@@ -36,6 +37,13 @@ Options:
 export interface RunCliOptions {
   readonly cwd: string
   readonly io?: CliIO
+  /**
+   * Optional map of `"<step>:<sub>"` -> subcommand handler. When the first CLI
+   * arg contains a `:`, the dispatcher consults this registry before attempting
+   * workflow execution. Produced by `buildSubcommandRegistry(steps)` in
+   * `@zl/core` once plugin steps have been loaded (Task 14 / ZER-114).
+   */
+  readonly subcommandRegistry?: ReadonlyMap<string, SubcommandHandler>
 }
 
 interface ParsedArgs {
@@ -100,6 +108,16 @@ export async function runCli(
   opts: RunCliOptions
 ): Promise<number> {
   const io = opts.io ?? defaultIO
+
+  // Step-subcommand dispatch: any first-arg token containing a `:` is a
+  // `step:sub` invocation and skips workflow parsing entirely. Kept as an
+  // isolated early-return block so it merges cleanly against other branches
+  // touching the main command dispatch (cf. ZER-123).
+  const first = args[0]
+  if (first && first.includes(":") && first !== "--help" && first !== "-h") {
+    return dispatchSubcommand(first, args.slice(1), opts.subcommandRegistry, io)
+  }
+
   const parsed = parseArgs(args, io)
   if (typeof parsed === "number") return parsed
 
@@ -143,6 +161,32 @@ export async function runCli(
       )
     )
   )
+}
+
+// Dispatch a `step:sub` CLI token to the matching `SubcommandHandler`. Returns
+// a process exit code. Isolated from the main command dispatch so PRs that
+// also touch `cli.ts`'s command flow (e.g. ZER-123) can rebase mechanically.
+async function dispatchSubcommand(
+  key: string,
+  argv: ReadonlyArray<string>,
+  registry: ReadonlyMap<string, SubcommandHandler> | undefined,
+  io: CliIO
+): Promise<number> {
+  if (!registry || registry.size === 0) {
+    io.stderr(
+      `Unknown command '${key}'. No step subcommands are registered in this project.`
+    )
+    return 1
+  }
+  const handler = registry.get(key)
+  if (!handler) {
+    const available = Array.from(registry.keys()).sort().join(", ")
+    io.stderr(
+      `Unknown subcommand '${key}'. Available subcommands: ${available}`
+    )
+    return 1
+  }
+  return handler(argv)
 }
 
 // Coerce an unknown-shaped failure into a human-readable string. The

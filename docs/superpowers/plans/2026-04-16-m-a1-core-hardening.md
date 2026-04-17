@@ -342,17 +342,22 @@ git commit -m "feat(core): add structured StepError class"
 Add at the top of the existing `describe("defineStep", ...)`:
 
 ```ts
-import { Schema } from "effect"
-import type { PluginStep, ResolvedStep } from "./StepContract"
+import type { PluginStep, ResolvedStep, OptionsSchema } from "./StepContract"
 
 test("defineStep accepts an optionsSchema and stores it on the plugin", () => {
-  const OptsSchema = Schema.Struct({ name: Schema.String })
+  const schema: OptionsSchema<{ name: string }> = {
+    decode: (raw) => {
+      const r = raw as Record<string, unknown>
+      if (typeof r.name !== "string") throw new Error("name must be a string")
+      return { name: r.name }
+    },
+  }
   const step = defineStep({
     name: "greet",
-    optionsSchema: OptsSchema,
+    optionsSchema: schema,
     run: async (opts) => ({ greeted: opts.name }),
   })
-  expect(step.optionsSchema).toBe(OptsSchema)
+  expect(step.optionsSchema).toBe(schema)
 })
 ```
 
@@ -369,7 +374,11 @@ Expected: FAIL — `optionsSchema` does not exist on `defineStep` def or its ret
 Replace the entire contents of `packages/core/src/step-loader/StepContract.ts` with:
 
 ```ts
-import { Effect, Schema } from "effect"
+import { Effect } from "effect"
+
+export interface OptionsSchema<T> {
+  readonly decode: (raw: unknown) => T
+}
 
 export interface StepContext {
   readonly logger: {
@@ -397,14 +406,14 @@ export interface StepContext {
 export interface SimpleStepDef<TOpts = Record<string, unknown>> {
   readonly name: string
   readonly dependsOnSteps?: ReadonlyArray<string>
-  readonly optionsSchema?: Schema.Schema<TOpts, Record<string, unknown>>
+  readonly optionsSchema?: OptionsSchema<TOpts>
   readonly run: (opts: TOpts, ctx: StepContext) => Promise<Record<string, unknown>>
 }
 
 export interface EffectStepDef<TOpts = Record<string, unknown>> {
   readonly name: string
   readonly dependsOnSteps?: ReadonlyArray<string>
-  readonly optionsSchema?: Schema.Schema<TOpts, Record<string, unknown>>
+  readonly optionsSchema?: OptionsSchema<TOpts>
   readonly run: (opts: TOpts) => Effect.Effect<Record<string, unknown>, unknown, unknown>
 }
 
@@ -412,7 +421,7 @@ export interface SimplePluginStep {
   readonly _tag: "simple"
   readonly name: string
   readonly dependsOnSteps: ReadonlyArray<string>
-  readonly optionsSchema?: Schema.Schema<unknown, Record<string, unknown>>
+  readonly optionsSchema?: OptionsSchema<unknown>
   readonly execute: (opts: Record<string, unknown>, ctx: StepContext) => Promise<Record<string, unknown>>
 }
 
@@ -420,7 +429,7 @@ export interface EffectPluginStep {
   readonly _tag: "effect"
   readonly name: string
   readonly dependsOnSteps: ReadonlyArray<string>
-  readonly optionsSchema?: Schema.Schema<unknown, Record<string, unknown>>
+  readonly optionsSchema?: OptionsSchema<unknown>
   readonly run: (opts: Record<string, unknown>) => Effect.Effect<Record<string, unknown>, unknown, unknown>
 }
 
@@ -440,7 +449,7 @@ export function defineStep<TOpts = Record<string, unknown>>(
     _tag: "simple",
     name: def.name,
     dependsOnSteps: def.dependsOnSteps ?? [],
-    optionsSchema: def.optionsSchema as Schema.Schema<unknown, Record<string, unknown>> | undefined,
+    optionsSchema: def.optionsSchema as OptionsSchema<unknown> | undefined,
     execute: (opts, ctx) => def.run(opts as TOpts, ctx),
   }
 }
@@ -452,7 +461,7 @@ export function defineEffectStep<TOpts = Record<string, unknown>>(
     _tag: "effect",
     name: def.name,
     dependsOnSteps: def.dependsOnSteps ?? [],
-    optionsSchema: def.optionsSchema as Schema.Schema<unknown, Record<string, unknown>> | undefined,
+    optionsSchema: def.optionsSchema as OptionsSchema<unknown> | undefined,
     run: (opts) => def.run(opts as TOpts),
   }
 }
@@ -2072,21 +2081,17 @@ async function validateStepOptions(config: ZlConfig, loader: PluginLoader): Prom
 
   for (const inst of allInstances) {
     const plugin = (await loader(inst.name)) as {
-      optionsSchema?: Schema.Schema<unknown, Record<string, unknown>>
+      optionsSchema?: { decode: (raw: unknown) => unknown }
     } | null
     if (!plugin || !plugin.optionsSchema) continue
-    const either = Schema.decodeUnknownEither(plugin.optionsSchema)(inst.options ?? {})
-    if (either._tag === "Left") {
+    try {
+      plugin.optionsSchema.decode(inst.options ?? {})
+    } catch (err) {
       throw new ConfigValidationError([
-        `Invalid options for step '${inst.name}': ${formatSchemaError(either.left)}`,
+        `Invalid options for step '${inst.name}': ${err instanceof Error ? err.message : String(err)}`,
       ])
     }
   }
-}
-
-function formatSchemaError(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
 }
 ```
 

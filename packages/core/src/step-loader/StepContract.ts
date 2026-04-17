@@ -65,6 +65,7 @@ export interface ResolvedStep {
   readonly name: string
   /** Workflow-bound dep list; may differ from `plugin.dependsOnSteps`. */
   readonly dependsOnSteps: ReadonlyArray<string>
+  /** Raw workflow-bound options as provided in config; decoded by `plugin.optionsSchema.decode` at execution time. */
   readonly options: Record<string, unknown>
 }
 

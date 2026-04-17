@@ -248,7 +248,7 @@ describe("Pipeline", () => {
 
   test("captures StepError.code on StepResult when an effect step fails with StepError", async () => {
     const failing = defineEffectStep({
-      name: "preflight",
+      name: "failing-step",
       run: () =>
         Effect.fail(
           new StepError({
@@ -260,7 +260,7 @@ describe("Pipeline", () => {
 
     const pipeline = definePipeline({
       steps: [resolved(failing)],
-      workflow: ["preflight"],
+      workflow: ["failing-step"],
       skipPreflight: true,
     })
 

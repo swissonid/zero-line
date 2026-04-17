@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Fiber } from "effect"
 import { ShellService } from "../ports/ShellService"
 import { LocalShellLive } from "./LocalShell"
 
@@ -102,5 +102,40 @@ describe("LocalShell", () => {
     )
     expect(result.exitCode).toBe(0)
     expect(result.stdout.trim()).toBe("zl-value-42")
+  })
+
+  test("honours Effect.interrupt by killing the subprocess (SIGTERM)", async () => {
+    const program = Effect.gen(function* () {
+      const sh = yield* ShellService
+      return yield* sh.spawn({ argv: ["sleep", "10"] })
+    })
+
+    const start = Date.now()
+    const fiber = Effect.runFork(Effect.provide(program, LocalShellLive))
+    // 100 ms is a heuristic: gives the Bun subprocess time to reach the kernel
+    // `sleep` syscall and for the Effect finalizer to register before we
+    // interrupt. On very slow hosts this may need to be increased. A fully
+    // robust version would pipe a ready-signal out of the subprocess, but
+    // that adds stream-handling complexity for a test-only concern.
+    await new Promise((r) => setTimeout(r, 100))
+    const exit = await Effect.runPromise(Fiber.interrupt(fiber))
+    const elapsed = Date.now() - start
+    // exit should come quickly (under 2s), not wait for sleep 10 to finish
+    expect(exit._tag).toBe("Failure")
+    expect(elapsed).toBeLessThan(2000)
+  })
+
+  test("times out after timeoutMs with structured error", async () => {
+    const exit = await Effect.runPromiseExit(
+      Effect.provide(
+        Effect.gen(function* () {
+          const sh = yield* ShellService
+          return yield* sh.spawn({ argv: ["sleep", "5"], timeoutMs: 250 })
+        }),
+        LocalShellLive
+      )
+    )
+    expect(exit._tag).toBe("Failure")
+    expect(JSON.stringify(exit)).toContain("TIMEOUT")
   })
 })

@@ -4,17 +4,21 @@ import type { PluginStep, StepContext } from "../step-loader/StepContract"
 import { ConsoleLoggerLive } from "../adapters/ConsoleLogger"
 import { LocalPlatformLive, detectToolchains, platformSupports } from "../adapters/LocalPlatform"
 import { MemoryArtifactStoreLive } from "../adapters/MemoryArtifactStore"
+import { LocalEnvConfigLive } from "../adapters/LocalEnvConfig"
 
 /**
  * Default runtime layer exported for CLI convenience. Includes logging,
- * local platform detection, and an in-memory artifact store. Callers that
- * need additional services (e.g. ShellService) compose their own layer and
- * provide it to {@link Pipeline.execute} at the call site.
+ * local platform detection, an in-memory artifact store, and an env-backed
+ * {@link ConfigService} so callers can resolve env vars and secrets without
+ * a project-dir-bound config layer. Callers that need real config loading
+ * (i.e. `config.load()`) compose `makeFileConfigLayer(projectDir)` on top
+ * — its `ConfigService` wins thanks to Effect's last-layer-wins semantics.
  */
 export const DefaultRuntimeLayer = Layer.mergeAll(
   ConsoleLoggerLive,
   LocalPlatformLive,
   MemoryArtifactStoreLive,
+  LocalEnvConfigLive,
 )
 
 export interface StepResult {

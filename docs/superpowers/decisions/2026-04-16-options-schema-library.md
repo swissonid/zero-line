@@ -7,10 +7,10 @@
 
 Two-part decision:
 
-1. **`optionsSchema` is schema-agnostic.** It accepts any object with a `decode(raw: unknown) => T` method — not a specific library type. Plugin authors may use `effect/Schema`, `zod`, `valibot`, `arktype`, or a hand-written validator.
+1. **`optionsSchema` is schema-agnostic.** It accepts any object with a `decode(raw: unknown) => T` method — not a specific library type. Step authors may use `effect/Schema`, `zod`, `valibot`, `arktype`, or a hand-written validator.
 2. **`effect/Schema` is the recommended default.** Zero extra dependencies, first-class integration with the Effect pipeline, and better error output for the nested-struct shapes steps tend to have (see spike below).
 
-Rationale for the split: locking the core to a single schema library would force every plugin author onto it; keeping the interface narrow (one `decode` method) costs nothing and preserves choice. The library choice therefore only governs what `@zl/core` and the first-party plugins ship against — which is `effect/Schema`.
+Rationale for the split: locking the core to a single schema library would force every step author onto it; keeping the interface narrow (one `decode` method) costs nothing and preserves choice. The library choice therefore only governs what `@zl/core` and the first-party plugins ship against — which is `effect/Schema`.
 
 ## Interface (v1.0)
 
@@ -40,7 +40,7 @@ optionsSchema: { decode: (raw) => myValidator(raw) }
 - `effect/Schema` — zero new deps; composes with Effect; `Schema.decodeUnknownEither` / `Schema.decodeUnknown` integrate cleanly with `Effect.Effect<_, StepError>`.
 - `zod` — broader ecosystem familiarity; friendlier default errors; would add a runtime dependency.
 
-The interface decision above means this is a *default* choice, not an exclusion of zod — plugin authors can still pick it via the `decode` function.
+The interface decision above means this is a *default* choice, not an exclusion of zod — step authors can still pick it via the `decode` function.
 
 ## Spike Output
 
@@ -75,7 +75,7 @@ Given an invalid input `{ scheme: "App", configuration: "Invalid", extraField: t
 
 **Error message quality:** effect/Schema produces a tree-formatted message that renders the full schema shape at the root, then narrows down the failing field path (`["configuration"]`) with a branching display of each expected literal and the actual value received. For deeply nested step configs this will be immediately readable in terminal output. Zod v4 produces a compact structured array with `code`, `values`, `path`, and `message` — machine-parseable and clean, but slightly less scannable at a glance.
 
-**Unknown field handling:** Both libraries silently strip unknown keys (e.g. `extraField: true`) during decode by default. effect/Schema `Struct` strips excess properties; zod `object` does the same with `.strip()` as default. This is a known footgun for plugin authors: a misspelled key like `derivedDataPaht` would be silently dropped with no error. v1.1 should consider a `strict` validation mode that rejects unknown keys — either via effect/Schema's `onExcessProperty: "error"` or by diffing the input keys against the schema's known fields in the generic decode wrapper.
+**Unknown field handling:** Both libraries silently strip unknown keys (e.g. `extraField: true`) during decode by default. effect/Schema `Struct` strips excess properties; zod `object` does the same with `.strip()` as default. This is a known footgun for step authors: a misspelled key like `derivedDataPaht` would be silently dropped with no error. v1.1 should consider a `strict` validation mode that rejects unknown keys — either via effect/Schema's `onExcessProperty: "error"` or by diffing the input keys against the schema's known fields in the generic decode wrapper.
 
 **DX / authoring:** Both libraries have similar ergonomics for this use-case. effect/Schema's `Schema.Struct`, `Schema.Literal`, `Schema.optional` mirror zod's `z.object`, `z.enum`, `z.string().optional()` closely. Neither requires boilerplate beyond the schema declaration.
 
@@ -87,7 +87,7 @@ No deal-breaking DX issues were observed with effect/Schema. The error output is
 
 ## End-to-end type safety (v1.1 goal)
 
-v1.0's decode-function approach is runtime-safe but doesn't give compile-time type inference from the schema to the step's `opts` parameter — plugin authors still provide `defineStep<MyOpts>(...)` manually.
+v1.0's decode-function approach is runtime-safe but doesn't give compile-time type inference from the schema to the step's `opts` parameter — step authors still provide `defineStep<MyOpts>(...)` manually.
 
 v1.1 will explore deeper integration (e.g. Standard Schema's `~standard.types.output` inference, or an `effect/Schema`-specific overload) so that `optionsSchema` alone drives the TypeScript type — no manual generic needed.
 

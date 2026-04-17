@@ -1,47 +1,34 @@
 /**
- * # Step instance resolver
+ * Step instance resolver — the "resolved" stage of the step lifecycle.
  *
- * Pairs each {@link StepInstance} from a workflow config with its compiled
- * {@link PluginStep} and produces a {@link ResolvedStep} — the "bound"
- * lifecycle stage the Pipeline iterates at execution time.
+ * Given a list of {@link StepInstance}s from a workflow config and a
+ * {@link PluginLoader} (dynamic import by default, in-memory in tests),
+ * produces `ReadonlyArray<{@link ResolvedStep}>` with each plugin paired
+ * to its workflow-bound name and options.
  *
- * This module is the **resolved** stage of the step lifecycle documented in
- * {@link ./StepContract}. The flow is:
+ * Effect-based so it composes with the rest of the runtime: failures flow
+ * through the typed {@link StepError} channel (not JS exceptions), loader
+ * I/O is interruptible, and per-instance resolution is parallel via
+ * `Effect.all({ concurrency: "unbounded" })` — matching the prior
+ * `Promise.all` behaviour.
  *
- * 1. The caller hands in `ReadonlyArray<StepInstance>` (from a
- *    `zl.config.ts` workflow) plus a {@link PluginLoader} that knows how to
- *    fetch a plugin module by its `name`.
- * 2. For each instance the resolver calls the loader, validates the result
- *    with {@link validateStep}, and constructs a {@link ResolvedStep} pairing
- *    the compiled plugin with the instance's raw options (and any authored
- *    defaults like `dependsOnSteps`).
- * 3. The returned array preserves input order so dependency-graph building
- *    downstream is deterministic.
- *
- * Injecting the loader (rather than hard-coding `import(name)`) keeps this
- * module test-friendly: unit tests pass a synchronous in-memory loader; the
- * CLI passes {@link defaultPluginLoader} which does a real dynamic import.
+ * Loader failures map to `StepError({ code: "STEP_NOT_FOUND" })`; exports
+ * that don't pass `validateStep` map to `StepError({ code: "INVALID_PLUGIN" })`.
  */
 
+import { Effect } from "effect"
 import { StepError } from "../engine/StepError"
 import type { PluginStep, ResolvedStep } from "./StepContract"
 import { validateStep } from "./StepLoader"
 import type { StepInstance } from "../config/ConfigTypes"
 
 /**
- * Pluggable module resolver: given a plugin package name (as it appears in a
- * step instance's `name` field), return the raw module export. Throwing (or
- * rejecting) signals "no such plugin" and is surfaced as
- * {@link StepError} `STEP_NOT_FOUND`.
+ * How a step name is turned into a raw plugin module. Returns the module's
+ * default-or-namespace export as `unknown` — the resolver validates the shape.
  *
- * The type intentionally returns `unknown`: the resolver runs
- * {@link validateStep} against whatever the loader returns, so custom loaders
- * (stubs, registries, monorepo lookups) don't have to understand the full
- * {@link PluginStep} shape themselves.
- *
- * Compatible-by-shape with `ConfigLoader`'s `PluginLoader` (which returns
- * `PluginLike | null` for the options-schema-only path). We keep the types
- * independent so neither module imports the other.
+ * Kept `Promise`-valued at the boundary because `import()` is Promise-native;
+ * the resolver wraps it in `Effect.tryPromise` internally so callers of
+ * {@link resolveStepInstances} only see the Effect surface.
  */
 export type PluginLoader = (name: string) => Promise<unknown>
 
@@ -56,6 +43,43 @@ export const defaultPluginLoader: PluginLoader = async (name: string) => {
   return (mod.default ?? mod) as unknown
 }
 
+function resolveOne(
+  instance: StepInstance,
+  loader: PluginLoader
+): Effect.Effect<ResolvedStep, StepError, never> {
+  return Effect.gen(function* () {
+    const raw = yield* Effect.tryPromise({
+      try: () => loader(instance.name),
+      catch: (cause) =>
+        new StepError({
+          code: "STEP_NOT_FOUND",
+          message: `Failed to load step plugin '${instance.name}'`,
+          cause,
+        }),
+    })
+
+    const validation = validateStep(raw)
+    if (!validation.valid) {
+      return yield* Effect.fail(
+        new StepError({
+          code: "INVALID_PLUGIN",
+          message: `Plugin '${instance.name}' is not a valid step: ${
+            validation.error ?? "unknown"
+          }`,
+        })
+      )
+    }
+
+    const plugin = raw as PluginStep
+    return {
+      plugin,
+      name: instance.name,
+      dependsOnSteps: plugin.dependsOnSteps,
+      options: instance.options,
+    }
+  })
+}
+
 /**
  * Resolve a workflow's {@link StepInstance} list into {@link ResolvedStep}s.
  *
@@ -64,53 +88,24 @@ export const defaultPluginLoader: PluginLoader = async (name: string) => {
  * and paired with the instance's raw options into a `ResolvedStep`.
  *
  * Errors:
- * - Loader throws/rejects → {@link StepError} `STEP_NOT_FOUND` (cause
- *   preserved).
+ * - Loader throws/rejects → {@link StepError} `STEP_NOT_FOUND` (cause preserved).
  * - Loaded export is not a valid plugin → {@link StepError} `INVALID_PLUGIN`
  *   (with the validator's error message).
  *
  * The first failure stops the walk; partial resolution is intentionally not
  * supported so config problems surface as a single predictable error.
  *
- * Options binding: the instance's `options` (defaulting to `{}`) are passed
- * through verbatim. Decoding against `plugin.optionsSchema.decode` happens
- * elsewhere (ConfigLoader, or the step's `execute`/`run` at runtime) — this
+ * Options binding: the instance's `options` are passed through verbatim.
+ * Decoding against `plugin.optionsSchema.decode` happens elsewhere
+ * (validateStepOptions, or the step's `execute`/`run` at runtime) — this
  * resolver only pairs instances with plugins.
  */
-export async function resolveStepInstances(
+export function resolveStepInstances(
   instances: ReadonlyArray<StepInstance>,
   loader: PluginLoader = defaultPluginLoader
-): Promise<ReadonlyArray<ResolvedStep>> {
-  return Promise.all(
-    instances.map(async (instance) => {
-      let raw: unknown
-      try {
-        raw = await loader(instance.name)
-      } catch (cause) {
-        throw new StepError({
-          code: "STEP_NOT_FOUND",
-          message: `Failed to load step plugin '${instance.name}'`,
-          cause,
-        })
-      }
-
-      const validation = validateStep(raw)
-      if (!validation.valid) {
-        throw new StepError({
-          code: "INVALID_PLUGIN",
-          message: `Plugin '${instance.name}' is not a valid step: ${
-            validation.error ?? "unknown"
-          }`,
-        })
-      }
-
-      const plugin = raw as PluginStep
-      return {
-        plugin,
-        name: instance.name,
-        dependsOnSteps: plugin.dependsOnSteps,
-        options: instance.options,
-      }
-    })
+): Effect.Effect<ReadonlyArray<ResolvedStep>, StepError, never> {
+  return Effect.all(
+    instances.map((instance) => resolveOne(instance, loader)),
+    { concurrency: "unbounded" }
   )
 }

@@ -1,14 +1,25 @@
 import { Effect } from "effect"
 import { definePipeline, DefaultRuntimeLayer } from "@zl/core"
-import type { PluginStep, ZlConfig } from "@zl/core"
+import type { ResolvedStep, ZlConfig } from "@zl/core"
 import { renderResults } from "../output/Renderer"
 import { defaultIO, type CliIO } from "../io"
 
 export interface RunOptions {
   readonly workflowName: string
   readonly config: ZlConfig
-  readonly steps: ReadonlyArray<PluginStep>
+  /**
+   * Workflow-bound steps ready for execution. Callers must pre-resolve their
+   * `StepInstance[]` → `ResolvedStep[]` via `resolveStepInstances` so bound
+   * options reach the pipeline (ZER-112). Passing raw `PluginStep[]` with
+   * empty options was the pre-ZER-112 behaviour and would now fail typing.
+   */
+  readonly steps: ReadonlyArray<ResolvedStep>
   readonly io?: CliIO
+  /**
+   * Propagated to the pipeline — useful for `zl doctor` or integration tests
+   * where requirement validation happens out-of-band. Default: `false`.
+   */
+  readonly skipPreflight?: boolean
 }
 
 /**
@@ -41,6 +52,7 @@ export function runWorkflow(
     const pipeline = definePipeline({
       steps: options.steps,
       workflow,
+      skipPreflight: options.skipPreflight,
     })
 
     const results = yield* Effect.provide(pipeline.execute, DefaultRuntimeLayer)

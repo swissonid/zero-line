@@ -120,13 +120,13 @@ export async function runCli(
     const instances = collectInstances(config, parsed.platform)
     const resolved = yield* resolveStepInstances(instances)
 
-    // Task 12 (ZER-112) will change Pipeline to accept ResolvedStep[] and
-    // thread bound options through. Until then we pass the plugin steps in
-    // the pre-existing Pipeline shape.
+    // Pipeline (post-ZER-112) accepts `ResolvedStep[]` directly, so bound
+    // options and workflow-local names flow straight through to the step
+    // execute/run surface.
     const success = yield* runWorkflow({
       workflowName: parsed.workflowName,
       config,
-      steps: resolved.map((r) => r.plugin),
+      steps: resolved,
       io,
     })
     return success ? 0 : 1

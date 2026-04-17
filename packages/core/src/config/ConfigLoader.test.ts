@@ -1,5 +1,7 @@
 import { describe, test, expect } from "bun:test"
-import { loadConfig, ConfigFileNotFoundError } from "./ConfigLoader"
+import { Schema } from "effect"
+import { loadConfig, ConfigFileNotFoundError, ConfigValidationError } from "./ConfigLoader"
+import { defineStep } from "../step-loader/StepContract"
 import { writeFileSync, mkdirSync, rmSync } from "fs"
 import { join } from "path"
 
@@ -66,6 +68,250 @@ describe("loadConfig", () => {
     )
     try {
       await expect(loadConfig(dir)).rejects.not.toThrow(ConfigFileNotFoundError)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects a StepInstance whose options fail the plugin's optionsSchema", async () => {
+    const good = defineStep({
+      name: "build-ios",
+      optionsSchema: { decode: Schema.decodeUnknownSync(Schema.Struct({ scheme: Schema.String })) },
+      run: async () => ({}),
+    })
+    const dir = withTmpProject(
+      "opt-invalid",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        platforms: { ios: { steps: [{ name: "build-ios", options: { scheme: 42 } }] } },
+        workflows: { ci: ["build-ios"] },
+      }`
+    )
+    try {
+      await expect(
+        loadConfig(dir, {
+          loader: async (n) => (n === "build-ios" ? good : null),
+        })
+      ).rejects.toThrow(/scheme/i)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("throws ConfigValidationError (not a bare Error) when step options are invalid", async () => {
+    const good = defineStep({
+      name: "build-ios",
+      optionsSchema: {
+        decode: (raw) => {
+          const r = raw as Record<string, unknown>
+          if (typeof r.scheme !== "string") throw new Error("scheme must be a string")
+          return r
+        },
+      },
+      run: async () => ({}),
+    })
+    const dir = withTmpProject(
+      "opt-invalid-class",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        platforms: { ios: { steps: [{ name: "build-ios", options: { scheme: 42 } }] } },
+        workflows: { ci: ["build-ios"] },
+      }`
+    )
+    try {
+      await expect(
+        loadConfig(dir, {
+          loader: async (n) => (n === "build-ios" ? good : null),
+        })
+      ).rejects.toBeInstanceOf(ConfigValidationError)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("loads cleanly when a loader is provided and all step options are valid", async () => {
+    const good = defineStep({
+      name: "build-ios",
+      optionsSchema: {
+        decode: (raw) => {
+          const r = raw as Record<string, unknown>
+          if (typeof r.scheme !== "string") throw new Error("scheme must be a string")
+          return r
+        },
+      },
+      run: async () => ({}),
+    })
+    const dir = withTmpProject(
+      "opt-valid-loader",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        platforms: { ios: { steps: [{ name: "build-ios", options: { scheme: "App" } }] } },
+        workflows: { ci: ["build-ios"] },
+      }`
+    )
+    try {
+      const config = await loadConfig(dir, {
+        loader: async (n) => (n === "build-ios" ? good : null),
+      })
+      expect(config.app.name).toBe("T")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("skips optionsSchema validation when the loader returns null for a step", async () => {
+    const dir = withTmpProject(
+      "opt-unknown-step",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        platforms: { ios: { steps: [{ name: "unknown-step", options: { anything: 1 } }] } },
+        workflows: { ci: ["unknown-step"] },
+      }`
+    )
+    try {
+      // Loader returns null → no schema to validate against, config loads fine.
+      const config = await loadConfig(dir, { loader: async () => null })
+      expect(config.platforms.ios?.steps[0]?.name).toBe("unknown-step")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("skips optionsSchema validation when the resolved plugin has no optionsSchema", async () => {
+    const good = defineStep({
+      name: "no-schema",
+      run: async () => ({}),
+    })
+    const dir = withTmpProject(
+      "opt-no-schema",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        platforms: { ios: { steps: [{ name: "no-schema", options: { anything: 1 } }] } },
+        workflows: { ci: ["no-schema"] },
+      }`
+    )
+    try {
+      const config = await loadConfig(dir, {
+        loader: async (n) => (n === "no-schema" ? good : null),
+      })
+      expect(config.platforms.ios?.steps[0]?.name).toBe("no-schema")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("validates optionsSchema for top-level steps (not just per-platform)", async () => {
+    const good = defineStep({
+      name: "top-level",
+      optionsSchema: {
+        decode: (raw) => {
+          const r = raw as Record<string, unknown>
+          if (typeof r.scheme !== "string") throw new Error("scheme must be a string")
+          return r
+        },
+      },
+      run: async () => ({}),
+    })
+    const dir = withTmpProject(
+      "opt-top-level",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        platforms: { ios: { steps: [] } },
+        steps: [{ name: "top-level", options: { scheme: 42 } }],
+        workflows: { ci: ["top-level"] },
+      }`
+    )
+    try {
+      await expect(
+        loadConfig(dir, {
+          loader: async (n) => (n === "top-level" ? good : null),
+        })
+      ).rejects.toThrow(/scheme/i)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("annotates errors with the source platform when a step is per-platform", async () => {
+    const good = defineStep({
+      name: "build",
+      optionsSchema: {
+        decode: (raw) => {
+          const r = raw as Record<string, unknown>
+          if (typeof r.scheme !== "string") throw new Error("scheme must be a string")
+          return r
+        },
+      },
+      run: async () => ({}),
+    })
+    const dir = withTmpProject(
+      "opt-platform-annotated",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        platforms: { ios: { steps: [{ name: "build", options: { scheme: 42 } }] } },
+        workflows: { ci: ["build"] },
+      }`
+    )
+    try {
+      await expect(
+        loadConfig(dir, { loader: async (n) => (n === "build" ? good : null) })
+      ).rejects.toThrow(/platform: ios/i)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("collects every invalid step in one ConfigValidationError instead of failing on the first", async () => {
+    const good = defineStep({
+      name: "build",
+      optionsSchema: {
+        decode: (raw) => {
+          const r = raw as Record<string, unknown>
+          if (typeof r.scheme !== "string") throw new Error("scheme must be a string")
+          return r
+        },
+      },
+      run: async () => ({}),
+    })
+    const dir = withTmpProject(
+      "opt-all-errors",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        steps: [{ name: "build", options: { scheme: 1 } }],
+        platforms: {
+          ios: { steps: [{ name: "build", options: { scheme: 2 } }] },
+          android: { steps: [{ name: "build", options: { scheme: 3 } }] },
+        },
+        workflows: { ci: ["build"] },
+      }`
+    )
+    try {
+      await expect(
+        loadConfig(dir, { loader: async (n) => (n === "build" ? good : null) })
+      ).rejects.toMatchObject({
+        issues: expect.arrayContaining([
+          expect.stringContaining("top-level"),
+          expect.stringContaining("platform: ios"),
+          expect.stringContaining("platform: android"),
+        ]),
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("remains backwards-compatible when no loader is provided", async () => {
+    const dir = withTmpProject(
+      "no-loader",
+      `export default {
+        app: { name: "T", bundleId: "c.t" },
+        platforms: { ios: { steps: [{ name: "anything", options: { junk: true } }] } },
+        workflows: { ci: ["anything"] },
+      }`
+    )
+    try {
+      const config = await loadConfig(dir)
+      expect(config.app.name).toBe("T")
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

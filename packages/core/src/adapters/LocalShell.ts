@@ -58,11 +58,8 @@ export interface SpawnedProcess {
  * fiber leaves (whether via success, failure, or interrupt), so no dangling
  * Effect work outlives the returned Effect.
  */
-export function runWithProcess(
-  opts: ShellSpawnOptions,
-  proc: SpawnedProcess
-): Effect.Effect<ShellResult, ShellError> {
-  return Effect.gen(function* () {
+export const runWithProcess = Effect.fn("LocalShell.runWithProcess")(
+  function* (opts: ShellSpawnOptions, proc: SpawnedProcess) {
     const deferred = yield* Deferred.make<ShellResult, ShellError>()
 
     /**
@@ -188,8 +185,8 @@ export function runWithProcess(
     )
 
     return result
-  })
-}
+  }
+)
 
 /**
  * Validates `opts.argv`, spawns the subprocess via `Bun.spawn`, then hands
@@ -197,41 +194,39 @@ export function runWithProcess(
  * the post-spawn logic against a fake {@link SpawnedProcess} without
  * actually forking an OS process.
  */
-function spawnEffect(
+const spawnEffect = Effect.fn("LocalShell.spawn")(function* (
   opts: ShellSpawnOptions
-): Effect.Effect<ShellResult, ShellError> {
-  return Effect.gen(function* () {
-    const [command, ...args] = opts.argv
-    if (!command) {
-      return yield* Effect.fail(
-        new ShellError({
-          code: "EMPTY_ARGV",
-          message: "argv must have at least one entry",
-        })
-      )
-    }
-
-    let proc: ReturnType<typeof Bun.spawn<"ignore", "pipe", "pipe">>
-    try {
-      proc = Bun.spawn([command, ...args], {
-        cwd: opts.cwd,
-        env: opts.env,
-        stdout: "pipe",
-        stderr: "pipe",
+) {
+  const [command, ...args] = opts.argv
+  if (!command) {
+    return yield* Effect.fail(
+      new ShellError({
+        code: "EMPTY_ARGV",
+        message: "argv must have at least one entry",
       })
-    } catch (err) {
-      return yield* Effect.fail(
-        new ShellError({
-          code: "SPAWN_FAILED",
-          message: err instanceof Error ? err.message : String(err),
-          cause: err,
-        })
-      )
-    }
+    )
+  }
 
-    return yield* runWithProcess(opts, proc)
-  })
-}
+  let proc: ReturnType<typeof Bun.spawn<"ignore", "pipe", "pipe">>
+  try {
+    proc = Bun.spawn([command, ...args], {
+      cwd: opts.cwd,
+      env: opts.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+  } catch (err) {
+    return yield* Effect.fail(
+      new ShellError({
+        code: "SPAWN_FAILED",
+        message: err instanceof Error ? err.message : String(err),
+        cause: err,
+      })
+    )
+  }
+
+  return yield* runWithProcess(opts, proc)
+})
 
 /**
  * `LocalShellLive` — the local-process implementation of the

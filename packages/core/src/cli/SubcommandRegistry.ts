@@ -11,8 +11,9 @@ import type { ResolvedStep, SubcommandHandler } from "../step-loader/StepContrac
  * command contains a colon.
  *
  * Steps without a `subcommands` object are skipped. The `:` separator is
- * literal; step and sub names may themselves contain `-` or other non-colon
- * characters without conflict (only the first `:` is semantic to the CLI).
+ * literal in the registry key format; step and sub names may themselves
+ * contain `-` or other non-colon characters without conflict. CLI lookup
+ * matches the complete `"<step-name>:<sub>"` token.
  */
 export function buildSubcommandRegistry(
   steps: ReadonlyArray<ResolvedStep>

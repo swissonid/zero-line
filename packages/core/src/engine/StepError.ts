@@ -1,11 +1,5 @@
 import { Data } from "effect"
 
-export interface StepErrorInit {
-  readonly code: string
-  readonly message: string
-  readonly cause?: unknown
-}
-
 /**
  * Typed engine-layer error for step resolution, pre-flight checks, and
  * pipeline execution failures.

@@ -34,8 +34,9 @@ describe("ConfigService", () => {
   })
 
   test("SecretNotFoundError carries a key and _tag", () => {
-    const err = new SecretNotFoundError({ key: "API_KEY" })
+    const err = new SecretNotFoundError({ key: "API_KEY", message: "Secret not found: API_KEY" })
     expect(err.key).toBe("API_KEY")
+    expect(err.message).toBe("Secret not found: API_KEY")
     expect(err._tag).toBe("SecretNotFoundError")
   })
 })

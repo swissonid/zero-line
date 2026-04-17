@@ -29,6 +29,7 @@ export class SecretNotFoundError extends Data.TaggedError(
   "SecretNotFoundError"
 )<{
   readonly key: string
+  readonly message: string
 }> {}
 
 export class ConfigService extends Context.Tag("ConfigService")<

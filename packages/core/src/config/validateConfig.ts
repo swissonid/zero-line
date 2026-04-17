@@ -1,21 +1,29 @@
-import { ParseResult, Schema } from "effect"
+import { Data, ParseResult, Schema } from "effect"
 import { ZlConfigSchema, type ZlConfig } from "./ConfigTypes"
 
 /**
- * Thrown by {@link validateConfig} when a `zl.config.ts` doesn't match the
- * expected shape.
+ * Typed failure raised when a project's `zl.config.ts` fails structural
+ * validation.
  *
- * `issues` is kept as a `string[]` for backward compatibility with existing
+ * `.issues` is kept as a `string[]` for backward compatibility with existing
  * consumers — each entry is one rendered block from `effect/Schema`'s
  * {@link ParseResult.TreeFormatter}, so a multi-error decode produces a
  * single tree-formatted string in `issues[0]` rather than N separate strings.
  * The tree already contains per-field paths and nested detail, so callers
  * that just print `err.message` get useful output for free.
+ *
+ * Built on `Data.TaggedError` so it participates in Effect's structural
+ * equality (enabling `Cause` deduplication) and exposes enumerable
+ * fields that survive `JSON.stringify`.
  */
-export class ConfigValidationError extends Error {
-  constructor(readonly issues: ReadonlyArray<string>) {
-    super(`Invalid config: ${issues.join(", ")}`)
-    this.name = "ConfigValidationError"
+export class ConfigValidationError extends Data.TaggedError(
+  "ConfigValidationError"
+)<{
+  readonly issues: ReadonlyArray<string>
+  readonly message: string
+}> {
+  constructor(issues: ReadonlyArray<string>) {
+    super({ issues, message: `Invalid config: ${issues.join(", ")}` })
   }
 }
 

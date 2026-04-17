@@ -1,4 +1,4 @@
-import { Context, Effect } from "effect"
+import { Context, Data, Effect } from "effect"
 
 export interface ShellSpawnOptions {
   readonly argv: ReadonlyArray<string>
@@ -13,29 +13,21 @@ export interface ShellResult {
   readonly stderr: string
 }
 
-// Plain class (not Data.TaggedError) for consistency with existing errors.
-// code is intentionally `string`, not a union — plugins define their own
-// error codes (e.g. "XCODEBUILD_FAILED", "GRADLE_TIMEOUT") so the port
-// can't enumerate them upfront.
-export class ShellError {
-  readonly _tag = "ShellError"
+/**
+ * Typed failure produced by a {@link ShellService} invocation.
+ *
+ * Built on `Data.TaggedError` for structural equality (Cause
+ * deduplication) and an enumerable `.message` that survives
+ * `JSON.stringify`. `code` is intentionally `string`, not a union — step
+ * authors invent their own codes (e.g. "XCODEBUILD_FAILED",
+ * "GRADLE_TIMEOUT") so the port can't enumerate them upfront.
+ */
+export class ShellError extends Data.TaggedError("ShellError")<{
   readonly code: string
   readonly message: string
   readonly exitCode?: number
   readonly cause?: unknown
-
-  constructor(init: {
-    code: string
-    message: string
-    exitCode?: number
-    cause?: unknown
-  }) {
-    this.code = init.code
-    this.message = init.message
-    this.exitCode = init.exitCode
-    this.cause = init.cause
-  }
-}
+}> {}
 
 export interface IShellService {
   readonly spawn: (

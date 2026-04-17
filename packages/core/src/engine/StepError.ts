@@ -1,33 +1,21 @@
-export interface StepErrorInit {
+import { Data } from "effect"
+
+/**
+ * Typed engine-layer error for step resolution, pre-flight checks, and
+ * pipeline execution failures.
+ *
+ * Built on `Data.TaggedError` so it participates in Effect's structural
+ * equality (enabling `Cause` deduplication) and exposes an enumerable
+ * `.message` property that survives `JSON.stringify`. `.cause` is
+ * optional — when provided, it preserves the original underlying error for
+ * diagnostics.
+ *
+ * The `code` field is intentionally a plain `string` rather than a union:
+ * step authors invent their own codes (e.g. `STEP_NOT_FOUND`,
+ * `PREFLIGHT_MISSING_SECRETS`) so the engine can't enumerate them upfront.
+ */
+export class StepError extends Data.TaggedError("StepError")<{
   readonly code: string
   readonly message: string
   readonly cause?: unknown
-}
-
-// Plain class (not Data.TaggedError) for consistency with existing errors
-// (ConfigLoadError, SecretNotFoundError). Revisit if Effect-native equality
-// or Cause deduplication becomes needed post-v1.0.
-export class StepError extends Error {
-  readonly _tag = "StepError"
-  readonly code: string
-
-  constructor(init: StepErrorInit) {
-    super(init.message, { cause: init.cause })
-    this.name = "StepError"
-    this.code = init.code
-  }
-
-  // `Error.prototype.message` is non-enumerable, so `JSON.stringify(err)`
-  // drops it. Effect's Cause printer and diagnostics that stringify failures
-  // (e.g. pre-flight error output) need the full message — expose it
-  // explicitly alongside `_tag` and `code`.
-  toJSON() {
-    return {
-      _tag: this._tag,
-      code: this.code,
-      message: this.message,
-      name: this.name,
-      ...(this.cause !== undefined ? { cause: this.cause } : {}),
-    }
-  }
-}
+}> {}

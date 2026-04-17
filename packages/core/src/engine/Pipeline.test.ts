@@ -37,18 +37,16 @@ function runPipeline<R>(pipeline: { readonly execute: Effect.Effect<ReadonlyArra
 }
 
 // Test harness with a custom layer so tests can inject a ConfigService that
-// fails `secret(...)` for a specific key (simulating a missing secret).
+// fails `secret(...)` for a specific key (simulating a missing secret). The
+// layer's "provides" type parameter is `R` — matching the pipeline's required
+// environment — so callers passing `Layer.mergeAll(ConfigLive, PlatformLive, ...)`
+// are type-checked against what the pipeline actually needs rather than a
+// too-narrow `Layer<never, never, never>` that forced a runtime cast.
 function runPipelineWith<R>(
   pipeline: { readonly execute: Effect.Effect<ReadonlyArray<unknown>, never, R> },
-  layer: Layer.Layer<never, never, never>
+  layer: Layer.Layer<R, never, never>
 ) {
-  return Effect.runPromise(
-    Effect.provide(pipeline.execute, layer) as Effect.Effect<
-      ReadonlyArray<unknown>,
-      never,
-      never
-    >
-  )
+  return Effect.runPromise(Effect.provide(pipeline.execute, layer))
 }
 
 // Stub ConfigService: secrets that aren't in `present` fail with

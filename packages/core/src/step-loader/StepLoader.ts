@@ -36,6 +36,20 @@ export function validateStep(step: unknown): ValidationResult {
     return { valid: false, error: `Step '${s.name}' is an effect step but has no 'run' function` }
   }
 
+  if (s.optionsSchema !== undefined) {
+    const schema = s.optionsSchema as Record<string, unknown> | null
+    if (
+      typeof schema !== "object" ||
+      schema === null ||
+      typeof schema.decode !== "function"
+    ) {
+      return {
+        valid: false,
+        error: `Step '${s.name}' has an invalid optionsSchema (must be an object with a decode function)`,
+      }
+    }
+  }
+
   return { valid: true }
 }
 

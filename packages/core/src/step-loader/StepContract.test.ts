@@ -66,6 +66,22 @@ describe("defineStep", () => {
 })
 
 describe("defineEffectStep", () => {
+  test("accepts an optionsSchema and stores it on the plugin", () => {
+    const schema: OptionsSchema<{ count: number }> = {
+      decode: (raw) => {
+        const r = raw as Record<string, unknown>
+        if (typeof r.count !== "number") throw new Error("count must be a number")
+        return { count: r.count }
+      },
+    }
+    const step = defineEffectStep({
+      name: "count-effect",
+      optionsSchema: schema,
+      run: (_opts) => Effect.succeed({ done: true }),
+    })
+    expect(step.optionsSchema).toBe(schema)
+  })
+
   test("creates a valid step from Effect layer", () => {
     const step = defineEffectStep({
       name: "greet-effect",

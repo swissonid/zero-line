@@ -61,7 +61,9 @@ export type PluginStep = SimplePluginStep | EffectPluginStep
 
 export interface ResolvedStep {
   readonly plugin: PluginStep
+  /** Workflow-bound name; may differ from `plugin.name` when aliased in config. */
   readonly name: string
+  /** Workflow-bound dep list; may differ from `plugin.dependsOnSteps`. */
   readonly dependsOnSteps: ReadonlyArray<string>
   readonly options: Record<string, unknown>
 }

@@ -172,4 +172,14 @@ describe("step requirements", () => {
     expect(step.requiredToolchains).toBeUndefined()
     expect(step.requiredEnv).toBeUndefined()
   })
+
+  test("defineEffectStep omits requirement fields when not provided", () => {
+    const step = defineEffectStep({
+      name: "bare-effect",
+      run: () => Effect.succeed({}),
+    })
+    expect(step.requiredSecrets).toBeUndefined()
+    expect(step.requiredToolchains).toBeUndefined()
+    expect(step.requiredEnv).toBeUndefined()
+  })
 })

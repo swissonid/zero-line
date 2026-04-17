@@ -41,8 +41,10 @@ import { Effect } from "effect"
  *   `(opts) => [\`APPLE_API_KEY_${opts.teamId}\`]`.
  *
  * Used by {@link SimpleStepDef} / {@link EffectStepDef} for `requiredSecrets`,
- * `requiredToolchains`, and `requiredEnv`. The pre-flight check (Task 11)
- * evaluates these against the configured environment before a step runs.
+ * `requiredToolchains`, and `requiredEnv`. The requirements gatherer (Task 10)
+ * collects these into a pipeline-wide summary; the pre-flight check (Task 11)
+ * evaluates that summary against the configured environment before any step
+ * runs.
  *
  * The `TOpts` parameter matches the step's options type in the authored defs;
  * it widens to `Record<string, unknown>` once the step is compiled into a

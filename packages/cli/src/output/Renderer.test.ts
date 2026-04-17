@@ -69,4 +69,20 @@ describe("Renderer", () => {
     })
     expect(out).toContain("Error: [SIGN_FAILED] no profile")
   })
+
+  test("renderStepResult indents continuation lines of multi-line errors", () => {
+    const out = renderStepResult({
+      name: "preflight",
+      status: "fail",
+      durationMs: 12,
+      error:
+        "Missing required secrets:\n  - APPLE_API_KEY (required by step 'sign')\n  - PLAY_KEY (required by step 'deploy')",
+      code: "PREFLIGHT_MISSING_SECRETS",
+    })
+    // Continuation lines must start with the same 4-space indent as "    Error:"
+    // so bulleted StepError messages (e.g. PREFLIGHT_MISSING_SECRETS from
+    // PreflightCheck.formatMissing) stay aligned in the terminal output.
+    expect(out).toContain("\n      - APPLE_API_KEY (required by step 'sign')")
+    expect(out).toContain("\n      - PLAY_KEY (required by step 'deploy')")
+  })
 })

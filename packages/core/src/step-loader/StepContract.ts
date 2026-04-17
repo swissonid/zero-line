@@ -55,6 +55,29 @@ export type Requirement<TOpts> =
   | ((opts: TOpts) => ReadonlyArray<string>)
 
 /**
+ * A step-attached side-channel handler for a `step:sub` CLI invocation.
+ *
+ * Step authors can expose extra verbs alongside the main `run` — e.g.
+ * `sign-ios:init`, `sign-ios:doctor` — by declaring `subcommands` on their
+ * {@link SimpleStepDef} / {@link EffectStepDef}. The SubcommandRegistry
+ * (Task 14) flattens every step's subcommands into a `"<step>:<sub>"`-keyed
+ * map that CLI dispatch consults before falling back to workflow execution.
+ *
+ * The handler receives:
+ * - `argv` — CLI args after the `step:sub` token, in declaration order.
+ * - `ctx` — the same {@link StepContext} the engine gives to `run` / `execute`,
+ *   so subcommands can log, read env/secrets, and query platform info. The
+ *   parameter is optional to keep 1-arg handler literals ergonomic in tests
+ *   and for subcommands that don't need runtime services.
+ *
+ * Handlers return a process exit code: `0` success, non-zero failure.
+ */
+export type SubcommandHandler = (
+  argv: ReadonlyArray<string>,
+  ctx?: StepContext
+) => Promise<number>
+
+/**
  * A minimal, schema-agnostic validator for plugin options.
  *
  * Plugins declare one via `optionsSchema` on their step definition. The resolver
@@ -127,6 +150,8 @@ export interface SimpleStepDef<TOpts = Record<string, unknown>> {
   readonly requiredToolchains?: Requirement<TOpts>
   /** Environment variables this step needs to be set. See {@link Requirement}. */
   readonly requiredEnv?: Requirement<TOpts>
+  /** Extra `step:sub` CLI verbs this step exposes. See {@link SubcommandHandler}. */
+  readonly subcommands?: Record<string, SubcommandHandler>
   readonly run: (opts: TOpts, ctx: StepContext) => Promise<Record<string, unknown>>
 }
 
@@ -148,6 +173,8 @@ export interface EffectStepDef<TOpts = Record<string, unknown>> {
   readonly requiredToolchains?: Requirement<TOpts>
   /** Environment variables this step needs to be set. See {@link Requirement}. */
   readonly requiredEnv?: Requirement<TOpts>
+  /** Extra `step:sub` CLI verbs this step exposes. See {@link SubcommandHandler}. */
+  readonly subcommands?: Record<string, SubcommandHandler>
   readonly run: (opts: TOpts) => Effect.Effect<Record<string, unknown>, unknown, unknown>
 }
 
@@ -171,6 +198,8 @@ export interface SimplePluginStep {
   readonly requiredToolchains?: Requirement<Record<string, unknown>>
   /** See {@link SimpleStepDef.requiredEnv}. Widened to opaque options at the compiled stage. */
   readonly requiredEnv?: Requirement<Record<string, unknown>>
+  /** See {@link SimpleStepDef.subcommands}. Consumed by the SubcommandRegistry (Task 14). */
+  readonly subcommands?: Record<string, SubcommandHandler>
   readonly execute: (opts: Record<string, unknown>, ctx: StepContext) => Promise<Record<string, unknown>>
 }
 
@@ -192,6 +221,8 @@ export interface EffectPluginStep {
   readonly requiredToolchains?: Requirement<Record<string, unknown>>
   /** See {@link EffectStepDef.requiredEnv}. Widened to opaque options at the compiled stage. */
   readonly requiredEnv?: Requirement<Record<string, unknown>>
+  /** See {@link EffectStepDef.subcommands}. Consumed by the SubcommandRegistry (Task 14). */
+  readonly subcommands?: Record<string, SubcommandHandler>
   readonly run: (opts: Record<string, unknown>) => Effect.Effect<Record<string, unknown>, unknown, unknown>
 }
 
@@ -247,6 +278,7 @@ export function defineStep<TOpts = Record<string, unknown>>(
     requiredSecrets: def.requiredSecrets as Requirement<Record<string, unknown>> | undefined,
     requiredToolchains: def.requiredToolchains as Requirement<Record<string, unknown>> | undefined,
     requiredEnv: def.requiredEnv as Requirement<Record<string, unknown>> | undefined,
+    subcommands: def.subcommands,
     execute: (opts, ctx) => def.run(opts as TOpts, ctx),
   }
 }
@@ -268,6 +300,7 @@ export function defineEffectStep<TOpts = Record<string, unknown>>(
     requiredSecrets: def.requiredSecrets as Requirement<Record<string, unknown>> | undefined,
     requiredToolchains: def.requiredToolchains as Requirement<Record<string, unknown>> | undefined,
     requiredEnv: def.requiredEnv as Requirement<Record<string, unknown>> | undefined,
+    subcommands: def.subcommands,
     run: (opts) => def.run(opts as TOpts),
   }
 }

@@ -183,3 +183,81 @@ describe("step requirements", () => {
     expect(step.requiredEnv).toBeUndefined()
   })
 })
+
+describe("step subcommands", () => {
+  test("defineStep accepts subcommands as a record of handlers", async () => {
+    const step = defineStep({
+      name: "sign-ios",
+      subcommands: {
+        init: async (argv) => {
+          return argv.length === 0 ? 0 : 1
+        },
+      },
+      run: async () => ({}),
+    })
+    expect(step.subcommands).toBeDefined()
+    const handler = step.subcommands!.init
+    expect(await handler([])).toBe(0)
+    expect(await handler(["--force"])).toBe(1)
+  })
+
+  test("defineStep subcommand handler receives the StepContext when provided", async () => {
+    const seen: Array<string> = []
+    const step = defineStep({
+      name: "sign-ios",
+      subcommands: {
+        doctor: async (_argv, ctx) => {
+          ctx?.logger.info("ran doctor")
+          return 0
+        },
+      },
+      run: async () => ({}),
+    })
+    const ctx = {
+      logger: {
+        info: (m: string) => {
+          seen.push(m)
+        },
+        warn: () => {},
+        error: () => {},
+        debug: () => {},
+      },
+      config: { env: () => undefined, secret: () => undefined },
+      platform: { os: () => "darwin", availableToolchains: () => [], supports: () => true },
+      artifacts: { put: () => {}, get: () => undefined, list: () => [] },
+    }
+    const exit = await step.subcommands!.doctor([], ctx)
+    expect(exit).toBe(0)
+    expect(seen).toEqual(["ran doctor"])
+  })
+
+  test("defineEffectStep accepts subcommands as a record of handlers", async () => {
+    const step = defineEffectStep({
+      name: "sign-ios-effect",
+      subcommands: {
+        init: async (argv) => (argv.length === 0 ? 0 : 1),
+      },
+      run: () => Effect.succeed({}),
+    })
+    expect(step.subcommands).toBeDefined()
+    const handler = step.subcommands!.init
+    expect(await handler([])).toBe(0)
+    expect(await handler(["--force"])).toBe(1)
+  })
+
+  test("defineStep omits subcommands when not provided", () => {
+    const step = defineStep({
+      name: "bare",
+      run: async () => ({}),
+    })
+    expect(step.subcommands).toBeUndefined()
+  })
+
+  test("defineEffectStep omits subcommands when not provided", () => {
+    const step = defineEffectStep({
+      name: "bare-effect",
+      run: () => Effect.succeed({}),
+    })
+    expect(step.subcommands).toBeUndefined()
+  })
+})

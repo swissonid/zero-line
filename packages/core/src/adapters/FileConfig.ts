@@ -24,11 +24,8 @@ export function makeFileConfigLayer(projectDir: string) {
     env: (key: string) => Effect.succeed(process.env[key]),
 
     secret: (key: string) =>
-      Effect.suspend(() => {
-        const envValue = process.env[key]
-        if (envValue !== undefined) return Effect.succeed(envValue)
-        // TODO: OS keychain lookup (separate task)
-        return Effect.fail(new SecretNotFoundError(key))
-      }),
+      Effect.fromNullable(process.env[key]).pipe(
+        Effect.mapError(() => new SecretNotFoundError(key))
+      ),
   })
 }

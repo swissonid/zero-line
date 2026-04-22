@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test"
 import { Effect } from "effect"
-import { defineStep, type ZlConfig } from "@zl/core"
+import { defineStep, type PluginStep, type ResolvedStep, type ZlConfig } from "@zl/core"
 import { runWorkflow } from "./run"
 import { makeIO } from "../test-utils/cli-io"
 
@@ -8,6 +8,16 @@ const mkConfig = (workflows: Record<string, string[]>): ZlConfig => ({
   app: { name: "T", bundleId: "c.t" },
   platforms: {},
   workflows,
+})
+
+// Wrap a compiled plugin step into a ResolvedStep for the post-ZER-112
+// `runWorkflow` shape. Tests don't care about aliases or options, so default
+// to `name = plugin.name` and `options = {}`.
+const resolved = (plugin: PluginStep, options: Record<string, unknown> = {}): ResolvedStep => ({
+  plugin,
+  name: plugin.name,
+  dependsOnSteps: plugin.dependsOnSteps,
+  options,
 })
 
 describe("runWorkflow", () => {
@@ -33,7 +43,7 @@ describe("runWorkflow", () => {
       runWorkflow({
         workflowName: "ci",
         config: mkConfig({ ci: ["ok"] }),
-        steps: [step],
+        steps: [resolved(step)],
         io,
       })
     )
@@ -52,7 +62,7 @@ describe("runWorkflow", () => {
       runWorkflow({
         workflowName: "ci",
         config: mkConfig({ ci: ["boom"] }),
-        steps: [step],
+        steps: [resolved(step)],
         io,
       })
     )
@@ -82,7 +92,7 @@ describe("runWorkflow", () => {
         runWorkflow({
           workflowName: "ci",
           config: mkConfig({ ci: ["ok"] }),
-          steps: [step],
+          steps: [resolved(step)],
         })
       )
       expect(passed).toBe(true)
@@ -91,5 +101,26 @@ describe("runWorkflow", () => {
       console.log = origLog
       console.error = origErr
     }
+  })
+
+  test("propagates skipPreflight to the pipeline", async () => {
+    const { io } = makeIO()
+    // A step with a required secret that doesn't exist — without
+    // `skipPreflight`, this would fail preflight and the step wouldn't run.
+    const step = defineStep({
+      name: "needs-secret",
+      requiredSecrets: ["DOES_NOT_EXIST_FOR_RUNWORKFLOW"],
+      run: async () => ({}),
+    })
+    const result = await Effect.runPromise(
+      runWorkflow({
+        workflowName: "ci",
+        config: mkConfig({ ci: ["needs-secret"] }),
+        steps: [resolved(step)],
+        io,
+        skipPreflight: true,
+      })
+    )
+    expect(result).toBe(true)
   })
 })

@@ -39,7 +39,7 @@ export { definePipeline, DefaultRuntimeLayer, type Pipeline, type StepResult, ty
 export { buildExecutionOrder, CyclicDependencyError } from "./engine/DependencyGraph"
 
 // Ports (re-export from subpath)
-export { LoggerService, ConfigService, PlatformService, ArtifactService, ShellService, ShellError } from "./ports/index"
+export { LoggerService, ConfigService, PlatformService, ArtifactService, ShellService, ShellError, SecretStore, SecretStoreError, type SecretStoreErrorCode } from "./ports/index"
 
 // Adapters
 export { ConsoleLoggerLive } from "./adapters/ConsoleLogger"
@@ -48,3 +48,4 @@ export { LocalEnvConfigLive } from "./adapters/LocalEnvConfig"
 export { LocalPlatformLive } from "./adapters/LocalPlatform"
 export { MemoryArtifactStoreLive } from "./adapters/MemoryArtifactStore"
 export { LocalShellLive } from "./adapters/LocalShell"
+export { MacOSKeychainSecretStoreLive } from "./adapters/MacOSKeychainSecretStore"
